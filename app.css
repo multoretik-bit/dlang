@@ -262,6 +262,33 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
   .deck-btns .btn { flex: 1; }
 }
 
+/* ---------- фразы ---------- */
+.bw-word.phrase { font-size: 22px; }
+.ph-note { margin: -4px 0 0; padding: 10px 12px; border-radius: var(--r-sm); background: var(--bg-2); color: var(--sub); font-size: 15px; font-weight: 600; line-height: 1.4; }
+.ch-actions.two { grid-template-columns: 1fr 1fr; }
+.phrase-list { display: grid; }
+.phrase-row { display: flex; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 2px solid var(--border); cursor: pointer; }
+.phrase-row:hover { background: var(--bg-2); }
+.pr-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.pr-main b { font-size: 17px; }
+.pr-main span { color: var(--sub); font-size: 15px; font-weight: 600; }
+.pr-main small { color: var(--light); font-size: 13px; font-weight: 600; }
+.build-answer {
+  min-height: 116px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 12px 0;
+  border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); margin-bottom: 18px;
+  background: repeating-linear-gradient(transparent 0 56px, var(--border) 56px 58px);
+}
+.build-answer.right .tile { border-color: #a5ed6e; color: var(--green-t); background: var(--green-bg); }
+.build-answer.wrong .tile { border-color: #ffb2b2; color: var(--red-t); background: var(--red-bg); }
+.build-bank { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.tile {
+  height: 46px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--border); border-bottom-width: 4px; background: var(--bg);
+  font-size: 17px; font-weight: 700; transition: transform 0.08s;
+}
+.tile:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 2px; }
+.tile.used { background: var(--border); color: transparent; border-color: var(--border); }
+.tile:disabled { cursor: default; }
+
 /* ---------- глаголы ---------- */
 .verb-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
 .verb-actions .btn { padding: 0 10px; }

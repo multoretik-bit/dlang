@@ -111,7 +111,38 @@ def build_verbs(lang):
     print(f"{lang}: {len(out)} глаголов с тремя формами")
 
 
+PHRASE_CATS = [
+    ("greetings", "Приветствия и прощания"), ("smalltalk", "Как дела и разговор"), ("intro", "Знакомство"),
+    ("polite", "Вежливость"), ("requests", "Просьбы и вопросы"), ("opinion", "Мнение и согласие"),
+    ("reactions", "Эмоции и реакции"), ("plans", "Время и планы"), ("cafe", "В кафе и ресторане"),
+    ("shopping", "Покупки"), ("travel", "Дорога и отель"), ("help", "Проблемы и помощь"),
+    ("phone", "Телефон и сообщения"), ("work", "Работа и учёба"), ("everyday", "Разговорные выражения"),
+    ("idioms", "Идиомы"),
+]
+
+
+def build_phrases(lang):
+    """data/src/<lang>/phrases.json (формат в data/PHRASES_SPEC.md) → data/phrases-<lang>.json"""
+    src = ROOT / "data" / "src" / lang / "phrases.json"
+    if not src.exists():
+        return
+    order = {c: i for i, (c, _) in enumerate(PHRASE_CATS)}
+    seen, items = set(), []
+    for e in json.loads(src.read_text(encoding="utf-8")):
+        p, t, cat = str(e.get("p", "")).strip(), str(e.get("t", "")).strip(), e.get("cat")
+        if not p or not t or cat not in order or p.lower() in seen:
+            continue
+        seen.add(p.lower())
+        lvl = e.get("lvl") if e.get("lvl") in LEVELS else "A2"
+        items.append([hashlib.sha1(f"{lang}:phrase:{p}".encode("utf-8")).hexdigest()[:10], p, t, str(e.get("note", "")).strip(), cat, lvl])
+    items.sort(key=lambda x: order[x[4]])
+    cats = [[c, n] for c, n in PHRASE_CATS if any(x[4] == c for x in items)]
+    (ROOT / "data" / f"phrases-{lang}.json").write_text(json.dumps({"cats": cats, "items": items}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"{lang}: {len(items)} фраз в {len(cats)} темах")
+
+
 if __name__ == "__main__":
     for lang in sys.argv[1:] or ["en", "es"]:
         build(lang)
         build_verbs(lang)
+        build_phrases(lang)

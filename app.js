@@ -89,6 +89,12 @@ async function loadLang(lang) {
       DB[lang].vbById = new Map(DB[lang].verbs.map((v) => [v.id, v]));
     } catch {}
   }
+  try {
+    const ph = await (await fetch(`data/phrases-${lang}.json?v=1`)).json();
+    DB[lang].phCats = ph.cats.map(([id, name]) => ({ id, name }));
+    DB[lang].phrases = ph.items.map(([id, p, t, note, cat, lvl]) => ({ id, w: p, t, note, cat, lvl, src: `audio/${lang}/phrases/${id}.mp3`, audio: true, phrase: true }));
+    DB[lang].phById = new Map(DB[lang].phrases.map((x) => [x.id, x]));
+  } catch {}
   await applyBundledImport(lang);
   return DB[lang];
 }
@@ -103,7 +109,9 @@ function indexLang(lang = S.lang) {
 }
 const W = (id) => D()?.byId.get(id);
 const VB = (id) => D()?.vbById?.get(id);
-const anyWord = (id) => W(id) || VB(id);
+const PH = (id) => D()?.phById?.get(id);
+const anyWord = (id) => W(id) || VB(id) || PH(id);
+const hasPhrases = () => !!D()?.phrases?.length;
 const hasVerbs = () => !!D()?.verbs?.length;
 const catName = (w) => (D().catMap.get(w.cat) || MINE).name;
 
@@ -310,6 +318,7 @@ const IC = {
 // цветные иконки меню и статистики
 const ICON = {
   get review() { return ICON.repeat; },
+  phrases: '<svg viewBox="0 0 32 32"><path d="M5 7a3 3 0 0 1 3-3h16a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H13l-6 5v-5H8a3 3 0 0 1-3-3z" fill="#ff86d0"/><path d="M10 10.5h12M10 15h8" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
   verbs: '<svg viewBox="0 0 32 32"><rect x="4" y="5" width="24" height="6" rx="3" fill="#ce82ff"/><rect x="4" y="13" width="18" height="6" rx="3" fill="#1cb0f6"/><rect x="4" y="21" width="12" height="6" rx="3" fill="#58cc02"/></svg>',
   learn: '<svg viewBox="0 0 32 32"><path d="M5 14.5 16 5l11 9.5V27a1.5 1.5 0 0 1-1.5 1.5h-19A1.5 1.5 0 0 1 5 27z" fill="#ffc800"/><path d="M3 15.5 16 4l13 11.5" fill="none" stroke="#ff4b4b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="12.5" y="18" width="7" height="10.5" rx="1.5" fill="#e5a000"/></svg>',
   words: '<svg viewBox="0 0 32 32"><path d="M5 6.5A2.5 2.5 0 0 1 7.5 4H26v21H7.5A2.5 2.5 0 0 0 5 27.5z" fill="#1cb0f6"/><path d="M5 27.5A2.5 2.5 0 0 1 7.5 25H26v3.5H7.5A2.5 2.5 0 0 1 5 27.5z" fill="#ddf4ff"/><path d="M11 10h10M11 14.5h7" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
@@ -382,7 +391,7 @@ async function render() {
   if (page === 'cards') return cards ? renderCardSession() : go('#/review');
   if (page === 'words') return go('#/cats');
   if (page === 'verbs' && !hasVerbs()) return go('#/learn');
-  const views = { learn: renderLearn, cats: () => renderCats(arg), verbs: renderVerbs, review: renderReview, profile: renderProfile };
+  const views = { learn: renderLearn, cats: () => renderCats(arg), phrases: () => renderPhrases(arg), verbs: renderVerbs, review: renderReview, profile: renderProfile };
   const name = views[page] ? page : 'learn';
   app.innerHTML = `
     <div class="shell">
@@ -394,8 +403,8 @@ async function render() {
   afterRender[name]?.();
 }
 const afterRender = {};
-const NAV_ALL = [['learn', 'Учить'], ['cats', 'Категории'], ['verbs', 'Глаголы'], ['review', 'Повторение'], ['profile', 'Профиль']];
-const navItems = () => NAV_ALL.filter(([id]) => id !== 'verbs' || hasVerbs());
+const NAV_ALL = [['learn', 'Учить'], ['cats', 'Категории'], ['phrases', 'Фразы'], ['verbs', 'Глаголы'], ['review', 'Повторение'], ['profile', 'Профиль']];
+const navItems = () => NAV_ALL.filter(([id]) => (id !== 'verbs' || hasVerbs()) && (id !== 'phrases' || hasPhrases()));
 function sidebar(page) {
   return `<nav class="sidebar">
     <a class="logo" href="#/learn">dLang</a>
@@ -577,10 +586,13 @@ const step = () => lesson.steps[lesson.i];
 function renderLesson() {
   clearTimeout(lesson.timer);
   if (lesson.i >= lesson.steps.length) return renderLessonEnd();
-  const st = step(), w = st.id && (st.verb ? VB(st.id) : W(st.id));
+  const st = step(), w = st.id && (st.verb ? VB(st.id) : st.phrase ? PH(st.id) : W(st.id));
   if (st.id && !w) { lesson.i++; return renderLesson(); }
   let body = '';
-  if (st.t === 'vintro') body = verbIntroView(w);
+  if (st.t === 'pintro') body = phraseIntroView(w);
+  else if (st.t === 'pchoice' || st.t === 'preverse') body = phraseChoiceView(st, w);
+  else if (st.t === 'pbuild') body = phraseBuildView(st, w);
+  else if (st.t === 'vintro') body = verbIntroView(w);
   else if (st.t === 'vchoice') body = verbChoiceView(st, w);
   else if (st.t === 'vforms') body = verbFormsView(w);
   else if (st.t === 'intro') body = introView(w);
@@ -598,7 +610,7 @@ function renderLesson() {
       ${footerView(st, w)}
     </main>`;
   if (!lesson.answered) {
-    if ((st.t === 'intro' || st.t === 'vintro') && S.settings.autoplay) speak(w);
+    if (['intro', 'vintro', 'pintro', 'pchoice'].includes(st.t) && S.settings.autoplay) speak(w);
     else if (st.t === 'listen') speak(w);
     else if (st.t === 'choice' && S.settings.autoplay) speak(w);
   }
@@ -671,7 +683,7 @@ function matchView(st) {
 }
 function footerView(st, w) {
   const a = lesson.answered;
-  if (st.t === 'intro' || st.t === 'vintro') return `<footer class="lesson-foot"><div class="foot-in">
+  if (['intro', 'vintro', 'pintro'].includes(st.t)) return `<footer class="lesson-foot"><div class="foot-in">
     <div class="foot-left">
       <button class="btn btn-ghost" data-act="intro-known" title="Отметить выученным и убрать из урока">Уже знаю</button>
       <button class="btn btn-ghost" data-act="intro-skip" title="Убрать из урока, слово останется новым">Пропустить</button>
@@ -680,7 +692,7 @@ function footerView(st, w) {
   if (st.t === 'match') return `<footer class="lesson-foot"><div class="foot-in">
     <span></span><button class="btn btn-green" data-act="next" ${st.done?.length >= st.left?.length ? '' : 'disabled'}>Дальше</button></div></footer>`;
   if (!a) {
-    const ready = st.t === 'type' || st.t === 'vforms' || lesson.sel;
+    const ready = st.t === 'type' || st.t === 'vforms' || (st.t === 'pbuild' ? st.picked?.length : lesson.sel);
     return `<footer class="lesson-foot"><div class="foot-in">
       <button class="btn btn-ghost" data-act="skip">Не знаю</button>
       <button class="btn btn-green" data-act="check" ${ready ? '' : 'disabled'}>Проверить</button></div></footer>`;
@@ -707,7 +719,7 @@ function answer(ok, extra = {}) {
     lesson.combo = 0;
     if ((lesson.retries[id] || 0) < 2) {
       lesson.retries[id] = (lesson.retries[id] || 0) + 1;
-      lesson.steps.splice(Math.min(lesson.i + 3, lesson.steps.length), 0, st.verb ? { t: 'vforms', id, verb: true } : { t: 'choice', id });
+      lesson.steps.splice(Math.min(lesson.i + 3, lesson.steps.length), 0, st.verb ? { t: 'vforms', id, verb: true } : st.phrase ? { t: 'preverse', id, phrase: true } : { t: 'choice', id });
     }
   }
   if (!lesson.graded.has(id)) {
@@ -717,12 +729,18 @@ function answer(ok, extra = {}) {
   save();
   sfx(ok ? 'ok' : 'bad');
   renderLesson();
-  if (st.t !== 'listen') speak(st.verb ? VB(id) : W(id));
+  if (st.t !== 'listen') speak(anyWord(id));
 }
 function checkAnswer() {
   const st = step();
   if (!st || lesson.answered) return;
   if (st.t === 'vchoice') { if (lesson.sel != null) answer(lesson.sel === String(st.correct)); return; }
+  if (st.t === 'pchoice' || st.t === 'preverse') { if (lesson.sel) answer(lesson.sel === st.id); return; }
+  if (st.t === 'pbuild') {
+    if (!st.picked.length) return;
+    const got = st.picked.map((i) => st.bank[i].text.toLowerCase()).join(' ');
+    return answer(got === st.target.map((x) => x.toLowerCase()).join(' '));
+  }
   if (st.t === 'vforms') {
     const w = VB(st.id), f2 = $('#f2').value, f3 = $('#f3').value;
     if (!f2.trim() && !f3.trim()) return;
@@ -745,6 +763,124 @@ function dropFromLesson(id) {
   save();
   nextStep();
 }
+// ---------- фразы ----------
+const phraseCounts = (list) => { const c = { new: 0, learning: 0, learned: 0, total: list.length }; for (const x of list) c[status(x.id)]++; return c; };
+const phraseDue = () => { const t = today(); return D().phrases.filter((x) => { const r = LP().words[x.id]; return r && r.s >= 1 && r.due <= t; }).map((x) => x.id); };
+const phraseTokens = (text) => text.replace(/[¿¡]/g, '').split(/\s+/).map((x) => x.replace(/^[.,!?…;:"«»()]+|[.,!?…;:"«»()]+$/g, '')).filter(Boolean);
+function startPhraseLesson(fresh, review, back = '#/phrases') {
+  if (!fresh.length && !review.length) return toast('Здесь пока нечего повторять');
+  const steps = [], later = [];
+  for (const id of fresh) {
+    steps.push({ t: 'pintro', id, phrase: true }, { t: 'pchoice', id, phrase: true });
+    later.push({ t: 'pbuild', id, phrase: true });
+  }
+  for (const id of review) later.push({ t: pick(['pbuild', 'pbuild', 'preverse']), id, phrase: true });
+  steps.push(...shuffle(later));
+  lesson = { back, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  go('#/lesson');
+}
+function learnPhrases(list, back) {
+  // новые — сначала из самого лёгкого уровня, где они ещё есть, в случайном порядке
+  const fresh = list.filter((x) => status(x.id) === 'new');
+  const lv = LEVELS.find((l) => fresh.some((x) => x.lvl === l));
+  const ids = shuffle(fresh.filter((x) => x.lvl === lv).map((x) => x.id)).slice(0, 5);
+  if (ids.length) return startPhraseLesson(ids, shuffle(phraseDue()).slice(0, 3), back);
+  reviewPhrases(list, back);
+}
+function reviewPhrases(list, back) {
+  const due = phraseDue().filter((id) => list.some((x) => x.id === id));
+  const ids = due.length ? due : list.filter((x) => status(x.id) !== 'new').map((x) => x.id);
+  startPhraseLesson([], shuffle(ids).slice(0, 10), back);
+}
+function phraseIntroView(w) {
+  const r = rec(w.id);
+  return `
+    <h1 class="ex-title"><span class="tag-new">Новая фраза</span></h1>
+    <div class="speaker-row">${cat('happy', 96)}
+      <div class="bubble bubble-word"><div class="bw-line">${say(w.id, 'say-lg')}<span class="bw-word phrase">${esc(w.w)}</span></div></div>
+    </div>
+    <div class="intro-card">
+      <div class="intro-tr">${esc(w.t)}</div>
+      ${w.note ? `<p class="ph-note">${esc(w.note)}</p>` : ''}
+      <label class="assoc"><span>Ассоциация, чтобы запомнить</span>
+        <textarea data-assoc="${esc(w.id)}" rows="2" placeholder="Ситуация, где ты это скажешь">${esc(r?.as || '')}</textarea></label>
+    </div>`;
+}
+function phraseChoiceView(st, w) {
+  const reverse = st.t === 'preverse', field = reverse ? 'w' : 't';
+  if (!st.opts) {
+    const others = D().phrases.filter((x) => x.id !== w.id && norm(x[field]) !== norm(w[field]));
+    const same = shuffle(others.filter((x) => x.cat === w.cat)), rest = shuffle(others.filter((x) => x.cat !== w.cat));
+    st.opts = shuffle([w, ...[...same, ...rest].slice(0, 3)]).map((x) => x.id);
+  }
+  const prompt = reverse
+    ? `<h1 class="ex-title">Как это сказать ${LANGS[S.lang].in}?</h1><div class="speaker-row">${cat('think', 96)}<div class="bubble bubble-word"><span class="bw-word ru">${esc(w.t)}</span></div></div>`
+    : `<h1 class="ex-title">Что значит эта фраза?</h1><div class="speaker-row">${cat('idle', 96)}<div class="bubble bubble-word"><div class="bw-line">${say(w.id, 'say-lg')}<span class="bw-word phrase">${esc(w.w)}</span></div></div></div>`;
+  const a = lesson.answered;
+  return `${prompt}
+    <div class="choices one">${st.opts.map((id, i) => {
+      const x = PH(id);
+      let cls = lesson.sel === id ? 'sel' : '';
+      if (a) cls = id === w.id ? 'right' : id === lesson.sel ? 'wrong' : '';
+      return `<button class="choice" data-act="pick" data-id="${esc(id)}" ${a ? 'disabled' : ''}><kbd>${i + 1}</kbd><span>${esc(x[field])}</span></button>`;
+    }).join('')}</div>`;
+}
+function phraseBuildView(st, w) {
+  if (!st.bank) {
+    st.target = phraseTokens(w.w);
+    const have = new Set(st.target.map((x) => x.toLowerCase()));
+    const pool = shuffle(D().phrases.filter((x) => x.id !== w.id).flatMap((x) => phraseTokens(x.w))).filter((x) => !have.has(x.toLowerCase()));
+    const extra = [...new Set(pool)].slice(0, st.target.length > 6 ? 2 : 3);
+    st.bank = shuffle([...st.target, ...extra]).map((text, i) => ({ i, text }));
+    st.picked = [];
+  }
+  const a = lesson.answered;
+  return `<h1 class="ex-title">Собери фразу</h1>
+    <div class="speaker-row">${cat('think', 96)}<div class="bubble bubble-word"><span class="bw-word ru">${esc(w.t)}</span></div></div>
+    <div class="build-answer ${a ? (a.ok ? 'right' : 'wrong') : ''}">${st.picked.map((i) => `<button class="tile" data-act="tile-back" data-i="${i}" ${a ? 'disabled' : ''}>${esc(st.bank[i].text)}</button>`).join('')}</div>
+    <div class="build-bank">${st.bank.map((b) => { const used = st.picked.includes(b.i); return `<button class="tile ${used ? 'used' : ''}" data-act="tile" data-i="${b.i}" ${used || a ? 'disabled' : ''}>${esc(b.text)}</button>`; }).join('')}</div>`;
+}
+const phraseRow = (x) => { const st = status(x.id); return `<div class="phrase-row" data-act="say" data-id="${esc(x.id)}">
+  ${say(x.id, 'say-sm')}
+  <div class="pr-main"><b>${esc(x.w)}</b><span>${esc(x.t)}</span>${x.note ? `<small>${esc(x.note)}</small>` : ''}</div>
+  <span class="st-pill st-${st}">${STATUS_NAME[st]}</span></div>`; };
+function renderPhrases(arg) {
+  if (!hasPhrases()) return `<div class="empty">${cat('think', 90)}<p>Фразы скоро появятся</p></div>`;
+  const db = D();
+  if (arg && db.phCats.some((c) => c.id === arg)) {
+    const c = db.phCats.find((x) => x.id === arg), list = db.phrases.filter((x) => x.cat === arg), cn = phraseCounts(list), done = cn.learned + cn.learning;
+    const color = UNIT_COLORS[db.phCats.indexOf(c) % UNIT_COLORS.length];
+    return `<header class="page-head"><a class="icon-btn" href="#/phrases" aria-label="Назад">${IC.back}</a><h1 class="grow">${esc(c.name)}</h1></header>
+      <section class="cat-hero u-${color}">
+        <div class="ch-nums"><b>${done}</b><span>из ${cn.total} фраз выучено</span></div>
+        <div class="lc-bar"><i style="width:${(done / cn.total) * 100}%"></i></div>
+        <div class="ch-actions two">
+          <button class="btn btn-white" data-act="ph-learn" data-cat="${esc(arg)}" ${cn.new ? '' : 'disabled'}>Учить новые</button>
+          <button class="btn btn-white" data-act="ph-review" data-cat="${esc(arg)}" ${done ? '' : 'disabled'}>Повторить</button>
+        </div>
+      </section>
+      <div class="phrase-list">${list.map(phraseRow).join('')}</div>`;
+  }
+  const cn = phraseCounts(db.phrases), due = phraseDue().length;
+  return `<header class="page-head"><h1>Фразы</h1></header>
+    <p class="lead">Устойчивые выражения — как на самом деле говорят ${S.lang === 'en' ? 'англичане и американцы' : 'испанцы'}.</p>
+    <div class="dict-stats">
+      <div><b class="c-green">${cn.learned}</b><small>изучено</small></div>
+      <div><b class="c-orange">${cn.learning}</b><small>изучаю</small></div>
+      <div><b>${cn.new}</b><small>впереди</small></div>
+    </div>
+    <div class="verb-actions">
+      <button class="btn btn-green" data-act="ph-learn" ${cn.new ? '' : 'disabled'}>Учить новые</button>
+      <button class="btn btn-blue" data-act="ph-review" ${cn.learned + cn.learning ? '' : 'disabled'}>${due ? `Повторить · ${due}` : 'Прогнать выученные'}</button>
+    </div>
+    <div class="cat-grid">${db.phCats.map((c, i) => {
+      const list = db.phrases.filter((x) => x.cat === c.id), k = phraseCounts(list), done = k.learned + k.learning, pct = Math.round((done / k.total) * 100);
+      return `<a class="cat-tile u-${UNIT_COLORS[i % UNIT_COLORS.length]}" href="#/phrases/${c.id}">
+        <span class="ct-ring" style="--p:${pct}"><b>${pct}%</b></span>
+        <span class="ct-txt"><b>${esc(c.name)}</b><small>${done} из ${k.total}</small></span></a>`;
+    }).join('')}</div>`;
+}
+
 // ---------- глаголы: три формы ----------
 const verbStatusList = (list) => { const c = { new: 0, learning: 0, learned: 0, total: list.length }; for (const v of list) c[status(v.id)]++; return c; };
 const verbDue = () => { const t = today(); return D().verbs.filter((v) => { const r = LP().words[v.id]; return r && r.s >= 1 && r.due <= t; }).map((v) => v.id); };
@@ -923,6 +1059,7 @@ function reviewDecks() {
     ['recent', ICON.words, 'Недавно выученные', 'За последние 7 дней', by((w) => (all[w.id]?.first ?? -99) >= t - 7)],
     ['learning', ICON.repeat, 'Ещё не закрепились', 'Слова в процессе изучения', by((w) => status(w.id) === 'learning')],
     ['star', ICON.cards, 'Избранное', 'Слова со звёздочкой', by((w) => all[w.id]?.st)],
+    ...(hasPhrases() ? [['phrases', ICON.phrases, 'Фразы', 'Выученные устойчивые выражения', D().phrases.filter((x) => status(x.id) !== 'new').map((x) => x.id)]] : []),
     ['sift', ICON.cats, 'Проверь новые слова', 'Знаешь — свайп вправо, и слово не попадёт в уроки', main ? shuffle(freshOf(levelWords(main))).slice(0, 30) : []],
   ];
 }
@@ -943,7 +1080,7 @@ function renderReview() {
         <span class="deck-txt"><b>${name} <span class="deck-n">${ids.length}</span></b><small>${sub}</small></span>
         <span class="deck-btns">
           ${id !== 'sift' ? `<button class="btn btn-sm btn-blue" data-act="deck-quiz" data-deck="${id}" ${ids.length ? '' : 'disabled'}>Квиз</button>` : ''}
-          <button class="btn btn-sm btn-ghost" data-act="deck-cards" data-deck="${id}" ${ids.length ? '' : 'disabled'}>Карточки</button>
+          ${id !== 'phrases' ? `<button class="btn btn-sm btn-ghost" data-act="deck-cards" data-deck="${id}" ${ids.length ? '' : 'disabled'}>Карточки</button>` : ''}
         </span>
       </div>`).join('')}</div>`;
 }
@@ -1317,6 +1454,7 @@ const actions = {
   'cat-cards': (el) => startCards(D().words.filter((w) => w.cat === el.dataset.cat).map((w) => w.id), 'cat', `#/cats/${el.dataset.cat}`),
   'deck-quiz': (el) => {
     const ids = deckIds(el.dataset.deck);
+    if (el.dataset.deck === 'phrases') return startPhraseLesson([], shuffle(ids).slice(0, 10), '#/review');
     startLesson({ reviewIds: shuffle(el.dataset.deck === 'hard' ? ids.slice(0, 15) : ids.slice()).slice(0, 15), practice: true });
   },
   'deck-cards': (el) => startCards(deckIds(el.dataset.deck), el.dataset.deck === 'sift' ? 'sift' : 'deck'),
@@ -1340,6 +1478,10 @@ const actions = {
   know: (el) => { markKnown(el.dataset.id); save(); closeSheet(); toast('Отмечено как изученное'); render(); },
   'reset-word': (el) => { resetWord(el.dataset.id); save(); closeSheet(); toast('Слово вернётся в уроки'); render(); },
   'verbs-tab': (el) => { vv.tab = el.dataset.tab; render(); },
+  'ph-learn': (el) => { const cat = el.dataset.cat; learnPhrases(D().phrases.filter((x) => !cat || x.cat === cat), cat ? `#/phrases/${cat}` : '#/phrases'); },
+  'ph-review': (el) => { const cat = el.dataset.cat; reviewPhrases(D().phrases.filter((x) => !cat || x.cat === cat), cat ? `#/phrases/${cat}` : '#/phrases'); },
+  tile: (el) => { const st = step(); if (lesson.answered || st.picked.includes(+el.dataset.i)) return; st.picked.push(+el.dataset.i); renderLesson(); },
+  'tile-back': (el) => { const st = step(); if (lesson.answered) return; st.picked = st.picked.filter((i) => i !== +el.dataset.i); renderLesson(); },
   'verbs-learn': () => {
     const fresh = (tier) => D().verbs.filter((v) => v.tier === tier && status(v.id) === 'new').map((v) => v.id);
     const pickIds = fresh(1).length ? fresh(1) : fresh(2);
@@ -1361,7 +1503,7 @@ const actions = {
   'intro-known': () => { const id = step().id; markKnown(id); dropFromLesson(id); },
   // пропуск: слово уходит из урока, но остаётся новым — выпадет в другой раз
   'intro-skip': () => dropFromLesson(step().id),
-  pick: (el) => { if (lesson.answered) return; lesson.sel = el.dataset.id; if (!['listen', 'vchoice'].includes(step().t)) speak(W(el.dataset.id)); renderLesson(); },
+  pick: (el) => { if (lesson.answered) return; lesson.sel = el.dataset.id; if (!['listen', 'vchoice', 'pchoice'].includes(step().t)) speak(anyWord(el.dataset.id)); renderLesson(); },
   check: checkAnswer,
   skip: () => { if (!lesson.answered) answer(false, { typed: $('#typed')?.value || '' }); },
   next: () => nextStep(),
@@ -1436,7 +1578,7 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       if (document.activeElement.id === 'f2' && !lesson.answered && !$('#f3').value.trim()) return $('#f3').focus();
       if (lesson.answered) return nextStep();
-      if (st.t === 'intro' || st.t === 'vintro') return actions['intro-next']();
+      if (['intro', 'vintro', 'pintro'].includes(st.t)) return actions['intro-next']();
       if (st.t === 'match') { if (st.done?.length >= st.left?.length) nextStep(); return; }
       return checkAnswer();
     }
