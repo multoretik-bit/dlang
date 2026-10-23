@@ -646,7 +646,10 @@ function matchView(st) {
 function footerView(st, w) {
   const a = lesson.answered;
   if (st.t === 'intro') return `<footer class="lesson-foot"><div class="foot-in">
-    <button class="btn btn-ghost" data-act="intro-known">Уже знаю</button>
+    <div class="foot-left">
+      <button class="btn btn-ghost" data-act="intro-known" title="Отметить выученным и убрать из урока">Уже знаю</button>
+      <button class="btn btn-ghost" data-act="intro-skip" title="Убрать из урока, слово останется новым">Пропустить</button>
+    </div>
     <button class="btn btn-green" data-act="intro-next">Дальше</button></div></footer>`;
   if (st.t === 'match') return `<footer class="lesson-foot"><div class="foot-in">
     <span></span><button class="btn btn-green" data-act="next" ${st.done?.length >= st.left?.length ? '' : 'disabled'}>Дальше</button></div></footer>`;
@@ -701,6 +704,13 @@ function checkAnswer() {
     return answer(res !== 'wrong', { typed, note });
   }
   if (lesson.sel) answer(lesson.sel === w.id);
+}
+function dropFromLesson(id) {
+  lesson.steps = lesson.steps.filter((s, i) => i <= lesson.i || s.id !== id).map((s) => (s.t === 'match' ? { ...s, ids: s.ids.filter((x) => x !== id) } : s))
+    .filter((s) => s.t !== 'match' || s.ids.length >= 3);
+  lesson.newIds = lesson.newIds.filter((x) => x !== id);
+  save();
+  nextStep();
 }
 function nextStep() {
   if (!lesson) return;
@@ -1225,15 +1235,9 @@ const actions = {
   quit: () => { if (lesson.total && !confirm('Закончить урок? Пройденное сохранится.')) return; const back = lesson.back; lesson = null; go(back); },
   'end-next': () => { const back = lesson.back; lesson = null; go(back); },
   'intro-next': () => { introduce(step().id); lesson.xp += 3; addXP(3); save(); nextStep(); },
-  'intro-known': () => {
-    const id = step().id;
-    markKnown(id);
-    lesson.steps = lesson.steps.filter((s, i) => i <= lesson.i || s.id !== id).map((s) => (s.t === 'match' ? { ...s, ids: s.ids.filter((x) => x !== id) } : s))
-      .filter((s) => s.t !== 'match' || s.ids.length >= 3);
-    lesson.newIds = lesson.newIds.filter((x) => x !== id);
-    save();
-    nextStep();
-  },
+  'intro-known': () => { const id = step().id; markKnown(id); dropFromLesson(id); },
+  // пропуск: слово уходит из урока, но остаётся новым — выпадет в другой раз
+  'intro-skip': () => dropFromLesson(step().id),
   pick: (el) => { if (lesson.answered) return; lesson.sel = el.dataset.id; if (step().t !== 'listen') speak(W(el.dataset.id)); renderLesson(); },
   check: checkAnswer,
   skip: () => { if (!lesson.answered) answer(false, { typed: $('#typed')?.value || '' }); },

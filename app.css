@@ -378,6 +378,7 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
 .lesson-foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; border-top: 2px solid var(--border); background: var(--bg); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 .foot-in { max-width: 1000px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .foot-in .btn { min-width: 150px; }
+.foot-left { display: flex; gap: 12px; }
 .lesson-foot.ok { background: var(--green-bg); border-top-color: transparent; animation: slideUp 0.2s ease-out; }
 .lesson-foot.bad { background: var(--red-bg); border-top-color: transparent; animation: slideUp 0.2s ease-out; }
 @keyframes slideUp { from { transform: translateY(100%); } }
@@ -396,6 +397,9 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
   .foot-in { flex-wrap: wrap; }
   .foot-in .btn-green, .foot-in .btn-red { flex: 1; }
   .foot-in .btn-ghost, .foot-in .btn-red-ghost { min-width: 0; flex: 0 0 auto; }
+  .foot-left { width: 100%; }
+  .foot-left .btn { flex: 1; padding: 0 8px; font-size: 13px; letter-spacing: 0.4px; }
+  .foot-left + .btn-green { width: 100%; }
   .lesson-foot.ok .foot-in, .lesson-foot.bad .foot-in { flex-direction: column; align-items: stretch; }
   .lesson-foot.ok .foot-in .btn, .lesson-foot.bad .foot-in .btn { flex: none; }
   .fb-icon { display: none; }
