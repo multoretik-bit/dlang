@@ -1,0 +1,22 @@
+[
+{"w": "el ordenador", "ipa": "", "pos": "n", "t": "компьютер", "lvl": "A1", "ex": "Trabajo con el ordenador todo el día.", "exr": "Я весь день работаю за компьютером."},
+{"w": "el móvil", "ipa": "", "pos": "n", "t": "мобильный телефон, смартфон", "lvl": "A1", "ex": "Se me ha roto el móvil.", "exr": "У меня сломался телефон."},
+{"w": "el teléfono", "ipa": "", "pos": "n", "t": "телефон", "lvl": "A1", "ex": "¿Cuál es tu número de teléfono?", "exr": "Какой у тебя номер телефона?"},
+{"w": "la red", "ipa": "", "pos": "n", "t": "сеть, интернет", "lvl": "B1", "ex": "Encontré la información en la red.", "exr": "Я нашёл информацию в интернете."},
+{"w": "la pantalla", "ipa": "", "pos": "n", "t": "экран", "lvl": "A2", "ex": "La pantalla del móvil está rota.", "exr": "Экран телефона разбит."},
+{"w": "el programa", "ipa": "", "pos": "n", "t": "программа, передача", "lvl": "A2", "ex": "Ponen un programa interesante en la tele.", "exr": "По телевизору идёт интересная передача."},
+{"w": "la aplicación", "ipa": "", "pos": "n", "t": "приложение", "lvl": "A2", "ex": "Descarga esta aplicación en tu móvil.", "exr": "Скачай это приложение на телефон."},
+{"w": "el correo electrónico", "ipa": "", "pos": "n", "t": "электронная почта, имейл", "lvl": "A1", "ex": "Te mando un correo electrónico.", "exr": "Я пришлю тебе письмо по электронной почте."},
+{"w": "el mensaje", "ipa": "", "pos": "n", "t": "сообщение", "lvl": "A1", "ex": "Te he enviado un mensaje.", "exr": "Я отправил тебе сообщение."},
+{"w": "la página web", "ipa": "", "pos": "n", "t": "веб-страница, сайт", "lvl": "A2", "ex": "Mira el horario en la página web.", "exr": "Посмотри расписание на сайте."},
+{"w": "la contraseña", "ipa": "", "pos": "n", "t": "пароль", "lvl": "A2", "ex": "He olvidado mi contraseña.", "exr": "Я забыл свой пароль."},
+{"w": "el archivo", "ipa": "", "pos": "n", "t": "файл, архив", "lvl": "B1", "ex": "Guarda el archivo en el ordenador.", "exr": "Сохрани файл на компьютере."},
+{"w": "la cámara", "ipa": "", "pos": "n", "t": "камера, фотоаппарат", "lvl": "A2", "ex": "Mi móvil tiene una buena cámara.", "exr": "У моего телефона хорошая камера."},
+{"w": "la televisión", "ipa": "", "pos": "n", "t": "телевидение, телевизор", "lvl": "A1", "ex": "No vemos mucho la televisión.", "exr": "Мы мало смотрим телевизор."},
+{"w": "la radio", "ipa": "", "pos": "n", "t": "радио", "lvl": "A1", "ex": "Escucho la radio en el coche.", "exr": "Я слушаю радио в машине."},
+{"w": "la noticia", "ipa": "", "pos": "n", "t": "новость, известие", "lvl": "A2", "ex": "Tengo una buena noticia para ti.", "exr": "У меня для тебя хорошая новость."},
+{"w": "el periódico", "ipa": "", "pos": "n", "t": "газета", "lvl": "A1", "ex": "Mi padre lee el periódico cada día.", "exr": "Мой отец читает газету каждый день."},
+{"w": "la revista", "ipa": "", "pos": "n", "t": "журнал", "lvl": "A2", "ex": "Compré una revista de moda.", "exr": "Я купила модный журнал."},
+{"w": "el vídeo", "ipa": "", "pos": "n", "t": "видео, видеоролик", "lvl": "A1", "ex": "Mira este vídeo tan gracioso.", "exr": "Посмотри это смешное видео."},
+{"w": "la tecnología", "ipa": "", "pos": "n", "t": "технология, техника", "lvl": "B1", "ex": "La tecnología cambia muy rápido.", "exr": "Технологии меняются очень быстро."}
+]
