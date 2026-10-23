@@ -5,7 +5,7 @@
 const FLAG_EN = '<svg class="flag" viewBox="0 0 60 42"><clipPath id="fuk"><rect width="60" height="42" rx="8"/></clipPath><g clip-path="url(#fuk)"><rect width="60" height="42" fill="#012169"/><path d="M0 0l60 42M60 0 0 42" stroke="#fff" stroke-width="9"/><path d="M0 0l60 42M60 0 0 42" stroke="#C8102E" stroke-width="3"/><path d="M30 0v42M0 21h60" stroke="#fff" stroke-width="13"/><path d="M30 0v42M0 21h60" stroke="#C8102E" stroke-width="7"/></g></svg>';
 const FLAG_ES = '<svg class="flag" viewBox="0 0 60 42"><clipPath id="fes"><rect width="60" height="42" rx="8"/></clipPath><g clip-path="url(#fes)"><rect width="60" height="42" fill="#AA151B"/><rect y="10.5" width="60" height="21" fill="#F1BF00"/></g></svg>';
 const LANGS = {
-  en: { name: 'Английский', in: 'на английском', flag: FLAG_EN, speech: 'en-US', levels: ['A1', 'A2', 'B1', 'B2'], total: '1945 слов', tip: 'decide — «дай сайд»: выбери сторону' },
+  en: { name: 'Английский', in: 'на английском', flag: FLAG_EN, speech: 'en-US', levels: ['A1', 'A2', 'B1', 'B2'], total: '2351 слово', tip: 'decide — «дай сайд»: выбери сторону' },
   es: { name: 'Испанский', in: 'на испанском', flag: FLAG_ES, speech: 'es-ES', levels: ['A1', 'A2', 'B1'], total: '1070 слов', tip: 'la playa — «плайя»: пляж, где плавают' },
 };
 const LEVELS = ['A1', 'A2', 'B1', 'B2'];
@@ -74,7 +74,7 @@ const D = () => DB[S.lang];
 
 async function loadLang(lang) {
   if (DB[lang]) return DB[lang];
-  const res = await fetch(`data/${lang}.json?v=2`);
+  const res = await fetch(`data/${lang}.json?v=3`);
   if (!res.ok) throw new Error(`data/${lang}.json: ${res.status}`);
   const data = await res.json();
   DB[lang] = {
@@ -408,13 +408,18 @@ function sidebar(page) {
 function tabbar(page) {
   return `<nav class="tabbar">${NAV.map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}" aria-label="${label}">${ICON[id]}</a>`).join('')}</nav>`;
 }
+// «Выучено» — все слова, которые уже пройдены (изучаю + изучено), «осталось» — ещё не тронутые.
 function statsBar() {
-  const st = streakNow();
+  const c = counts(), learned = c.learned + c.learning, todayN = dayStat().n;
   return `<div class="statsbar">
-    <button class="stat-btn" data-act="lang-sheet" aria-label="Язык">${LANGS[S.lang].flag}</button>
-    <span class="stat-btn ${streakToday() ? 'fire' : 'muted'}" title="Дней подряд">${streakToday() ? ICON.fire : st ? ICON.fire : ICON.fireOff}<b>${st}</b></span>
-    <span class="stat-btn bolt" title="Очки сегодня">${ICON.bolt}<b>${xpToday()}</b></span>
-  </div>`;
+    <button class="lang-btn" data-act="lang-sheet" aria-label="Язык">${LANGS[S.lang].flag}</button>
+    <div class="top-nums">
+      <div class="top-num"><b class="c-green">${learned}</b><small>выучено</small></div>
+      <div class="top-num"><b>${c.new}</b><small>осталось</small></div>
+      <div class="top-num"><b class="c-blue">+${todayN}</b><small>сегодня</small></div>
+    </div>
+  </div>
+  <div class="top-bar" title="${learned} из ${c.total}"><i style="width:${(learned / c.total) * 100}%"></i></div>`;
 }
 function railView() {
   return `${statsBar()}${dailyCard()}${questsCard()}`;
@@ -479,7 +484,6 @@ function questsCard() {
   const q = [
     [ICON.book, `Выучи ${words(lp.daily)}`, d.n, lp.daily],
     d.r + due ? [ICON.repeat, 'Повтори слова на сегодня', d.r, d.r + due] : [ICON.repeat, 'Пройди 2 урока', d.l || 0, 2],
-    [ICON.bolt, 'Набери 50 очков', xpToday(), 50],
   ];
   return `<section class="panel quests"><h3>Задания дня</h3>
     ${q.map(([icon, title, v, max]) => { const ok = v >= max; return `<div class="quest">${icon}<div><b>${title}</b>
@@ -512,7 +516,7 @@ function renderLearn() {
         return `<div class="node-wrap ${isCur ? 'cur-wrap' : ''} ${popNode === node.key ? 'pop-wrap' : ''}" style="--x:${off}px">
           ${isCur && popNode !== node.key ? '<div class="node-tip">Начать</div>' : ''}
           <button class="node st-${st} ${isCur ? 'cur' : ''}" data-act="node" data-key="${node.key}" aria-label="Урок ${li + 1}">
-            ${isCur || st === 'started' ? `<svg class="node-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><circle cx="50" cy="50" r="46" class="fg" stroke-dasharray="289" stroke-dashoffset="${289 * (1 - fresh / node.ids.length)}"/></svg>` : ''}
+            ${isCur ? `<svg class="node-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><circle cx="50" cy="50" r="46" class="fg" stroke-dasharray="289" stroke-dashoffset="${289 * (1 - fresh / node.ids.length)}"/></svg>` : ''}
             <span class="node-face">${icon}</span>
           </button>
           ${popNode === node.key ? nodePop(node, st) : ''}
@@ -591,7 +595,7 @@ function renderLesson() {
       <header class="lesson-top">
         <button class="icon-btn" data-act="quit" aria-label="Выйти">${IC.close}</button>
         <div class="progress"><i style="width:${Math.max(3, (lesson.i / lesson.steps.length) * 100)}%"></i></div>
-        <span class="combo ${lesson.combo >= 3 ? 'hot' : ''}">${lesson.combo >= 3 ? `${ICON.fire}<b>${lesson.combo}</b>` : ''}</span>
+        <span class="counter">${lesson.newIds.length ? `+${lesson.newIds.filter((id) => status(id) !== 'new').length}` : ''}</span>
       </header>
       <section class="lesson-body">${body}</section>
       ${footerView(st, w)}
@@ -750,9 +754,9 @@ function renderLessonEnd() {
     <main class="lesson-end">
       <div class="end-hero">${cat(acc >= 70 ? 'happy' : 'idle', 150)}</div>
       <h1>${acc >= 90 ? 'Урок пройден идеально!' : acc >= 70 ? 'Урок пройден!' : 'Хорошая тренировка!'}</h1>
-      <p class="end-sub">${learnedNow ? `+${words(learnedNow)} в копилке` : 'Повторение — мать учения'}</p>
+      <p class="end-sub">Сегодня выучено: ${words(dayStat().n)}</p>
       <div class="end-stats">
-        <div class="end-stat yellow"><small>Всего очков</small><b>${ICON.bolt}${lesson.xp}</b></div>
+        <div class="end-stat yellow"><small>Новых слов</small><b>+${learnedNow}</b></div>
         <div class="end-stat green"><small>${acc >= 90 ? 'Отлично' : 'Точность'}</small><b>${IC.check}${acc}%</b></div>
         <div class="end-stat blue"><small>Время</small><b>${time}</b></div>
       </div>
@@ -821,9 +825,9 @@ function cardSets() {
   return [
     ['due', ICON.repeat, 'Повторить сегодня', 'Слова, которые пора освежить', dueIds()],
     ['next', ICON.book, 'Следующий урок', 'Посмотри слова заранее', node ? node.ids.slice() : []],
-    ['learning', ICON.fire, 'Изучаю', 'Слова в процессе', by((w) => status(w.id) === 'learning')],
+    ['learning', ICON.words, 'Изучаю', 'Слова в процессе', by((w) => status(w.id) === 'learning')],
     ['learned', ICON.chest, 'Изучено', 'Проверь, что не забыл', by((w) => status(w.id) === 'learned')],
-    ['star', ICON.bolt, 'Избранное', 'Слова со звёздочкой', by((w) => all[w.id]?.st)],
+    ['star', ICON.cards, 'Избранное', 'Слова со звёздочкой', by((w) => all[w.id]?.st)],
     ['sift', ICON.target, 'Что я уже знаю?', 'Свайп вправо — слово уйдёт из уроков', by((w) => status(w.id) === 'new' && !w.custom).slice(0, 40)],
   ];
 }
@@ -943,8 +947,9 @@ function flipCard() {
 function renderProfile() {
   const lp = LP(), c = counts(), t = today();
   const last = Array.from({ length: 7 }, (_, i) => t - 6 + i);
-  const maxXp = Math.max(20, ...last.map((d) => S.xp[dayKey(d)] || 0));
-  const totalXp = Object.values(S.xp).reduce((a, b) => a + b, 0);
+  const perDay = (d) => S.day[dayKey(d)]?.n || 0;
+  const maxN = Math.max(5, ...last.map(perDay));
+  const week = last.reduce((a, d) => a + perDay(d), 0);
   const wd = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
   return `
     <header class="profile-head">
@@ -953,13 +958,13 @@ function renderProfile() {
     </header>
     <h2 class="h2">Статистика</h2>
     <section class="stat-grid">
-      <div class="stat-box">${ICON.fire}<div><b>${streakNow()}</b><small>${plural(streakNow(), 'день', 'дня', 'дней')} подряд · рекорд ${S.streak.best || 0}</small></div></div>
-      <div class="stat-box">${ICON.bolt}<div><b>${totalXp}</b><small>очков всего</small></div></div>
-      <div class="stat-box">${ICON.book}<div><b>${c.learned}</b><small>слов изучено</small></div></div>
-      <div class="stat-box">${ICON.repeat}<div><b>${c.learning}</b><small>в процессе</small></div></div>
+      <div class="stat-box">${ICON.book}<div><b>${c.learned + c.learning}</b><small>выучено из ${c.total}</small></div></div>
+      <div class="stat-box">${ICON.words}<div><b>${c.new}</b><small>осталось</small></div></div>
+      <div class="stat-box">${ICON.target}<div><b>+${dayStat().n}</b><small>сегодня</small></div></div>
+      <div class="stat-box">${ICON.repeat}<div><b>+${week}</b><small>за 7 дней</small></div></div>
     </section>
-    <h2 class="h2">Эта неделя</h2>
-    <section class="box week">${last.map((d) => { const v = S.xp[dayKey(d)] || 0; return `<div class="wk"><div class="wk-bar"><i style="height:${Math.max(6, (v / maxXp) * 100)}%" class="${v ? 'on' : ''}"></i></div><small>${wd[new Date(d * 864e5).getUTCDay()]}</small></div>`; }).join('')}</section>
+    <h2 class="h2">Новые слова по дням</h2>
+    <section class="box week">${last.map((d) => { const v = perDay(d); return `<div class="wk"><b class="wk-n">${v || ''}</b><div class="wk-bar"><i style="height:${Math.max(6, (v / maxN) * 100)}%" class="${v ? 'on' : ''}"></i></div><small>${wd[new Date(d * 864e5).getUTCDay()]}</small></div>`; }).join('')}</section>
 
     <h2 class="h2">Язык</h2>
     <section class="lang-grid">${Object.entries(LANGS).map(([id, l]) => `
@@ -1091,17 +1096,17 @@ async function applyBundledImport(lang) {
   const lp = LP(lang);
   if (lp.importedOld) return;
   try {
-    const res = await fetch(`data/import-${lang}.json?v=2`);
+    const res = await fetch(`data/import-${lang}.json?v=3`);
     if (!res.ok) return;
     const list = await res.json();
     const db = DB[lang], index = new Map();
-    for (const w of db.base) index.set(w.w.toLowerCase(), w.id);
+    for (const w of db.base) { const k = w.w.toLowerCase(); if (!index.has(k)) index.set(k, []); index.get(k).push(w.id); }
     let n = 0;
     const prev = S.lang;
     S.lang = lang;
     for (const item of list) {
-      const id = index.get(String(item.w).toLowerCase());
-      if (id) { if (status(id) !== 'learned') { markKnown(id); n++; } continue; }
+      const ids = index.get(String(item.w).toLowerCase());
+      if (ids) { for (const id of ids) if (status(id) !== 'learned') markKnown(id); n++; continue; }
       if (!item.t) continue;
       // слова, которых нет в словаре, — отдельной темой «Со старого сайта»
       const cid = 'o' + String(item.w).toLowerCase().replace(/[^a-z]+/g, '-');
