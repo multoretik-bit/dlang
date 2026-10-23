@@ -42,6 +42,8 @@ function plural(n, one, few, many) {
 }
 const words = (n) => `${n} ${plural(n, 'слово', 'слова', 'слов')}`;
 const days = (n) => `${n} ${plural(n, 'день', 'дня', 'дней')}`;
+const NOUN = { word: ['слово', 'слова', 'слов'], phrase: ['фраза', 'фразы', 'фраз'], verb: ['глагол', 'глагола', 'глаголов'] };
+const count = (n, kind = 'word') => `${n} ${plural(n, ...NOUN[kind])}`;
 
 // ---------- состояние ----------
 const KEY = 'dlang:v1';
@@ -120,7 +122,7 @@ function status(id) {
   if (!r || !r.s) return 'new';
   return r.s >= LEARNED ? 'learned' : 'learning';
 }
-const STATUS_NAME = { new: 'Новое', learning: 'Изучаю', learned: 'Изучено' };
+const STATUS_NAME = { new: 'Новое', learning: 'Закрепляю', learned: 'Выучено' };
 function counts(list = D().words) {
   const c = { new: 0, learning: 0, learned: 0, total: list.length };
   for (const w of list) c[status(w.id)]++;
@@ -415,9 +417,9 @@ function sidebar(page) {
 function tabbar(page) {
   return `<nav class="tabbar" style="--n:${navItems().length}">${navItems().map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}</nav>`;
 }
-// «Выучено» — все слова, которые уже пройдены (изучаю + изучено), «осталось» — ещё не тронутые.
+// «Выучено» — закреплённые слова, «осталось» — ещё не тронутые, «сегодня» — начатые сегодня.
 function statsBar() {
-  const c = counts(), learned = c.learned + c.learning, todayN = dayStat().n;
+  const c = counts(), learned = c.learned, todayN = dayStat().n;
   return `<div class="statsbar">
     <button class="lang-btn" data-act="lang-sheet" aria-label="Язык">${LANGS[S.lang].flag}</button>
     <div class="top-nums">
@@ -508,6 +510,7 @@ function levelCard(key, title, tag, list, color) {
 // изучаю = ступени 1–3; три верных ответа в «Закрепить» → ступень 4 = изучено
 const learningWords = () => D().words.filter((w) => status(w.id) === 'learning');
 const strength = (id) => clamp((rec(id)?.s || 1) - 1, 0, 3);
+const statusMark = (id) => { const st = status(id); return st === 'learning' ? `<span class="st-mark">${dots(id)}</span>` : `<span class="st-pill st-${st}">${st === 'learned' ? '✓ ' : ''}${STATUS_NAME[st]}</span>`; };
 const dots = (id) => { const n = strength(id); return `<span class="dots">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; };
 function consolidateType(id) {
   const n = strength(id);
@@ -523,17 +526,16 @@ function startConsolidate(pool) {
   lesson = { back: location.hash && location.hash !== '#/lesson' ? location.hash : '#/learn', consolidate: true, steps: shuffle(ids.map((id) => ({ t: consolidateType(id), id }))), i: 0, newIds: [], graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
 }
-function consolidateCard() {
-  const list = learningWords();
+function consolidateCard(list = learningWords(), act = 'consolidate', kind = 'word') {
   if (!list.length) return '';
   const steps = list.reduce((a, w) => a + strength(w.id), 0), almost = list.filter((w) => strength(w.id) === 2).length;
   const preview = list.slice().sort((a, b) => strength(b.id) - strength(a.id)).slice(0, 8);
   return `<section class="panel consolidate">
-    <div class="cs-head"><div><h3>Закрепить</h3><small>${words(list.length)} в процессе${almost ? ` · ${almost} почти готовы` : ''}</small></div><b class="cs-num">${list.length}</b></div>
+    <div class="cs-head"><div><h3>Закрепить</h3><small>${count(list.length, kind)} в процессе${almost ? ` · ${almost} почти готовы` : ''}</small></div><b class="cs-num">${list.length}</b></div>
     <div class="pbar"><i style="width:${(steps / (list.length * 3)) * 100}%"></i><span>${steps} / ${list.length * 3} шагов</span></div>
     <div class="cs-words">${preview.map((w) => `<span class="cs-word">${esc(w.w)}${dots(w.id)}</span>`).join('')}${list.length > preview.length ? `<span class="cs-more">+${list.length - preview.length}</span>` : ''}</div>
-    <p class="cs-hint">Каждое слово нужно правильно вспомнить 3 раза — в последний раз написать самому. Потом оно уходит в изученные.</p>
-    <button class="btn btn-orange btn-wide" data-act="consolidate">Закрепить</button>
+    <p class="cs-hint">${kind === 'phrase' ? 'Каждую фразу нужно правильно вспомнить 3 раза — в последний раз собрать самому.' : kind === 'verb' ? 'Каждый глагол нужно 3 раза правильно написать во всех формах.' : 'Каждое слово нужно правильно вспомнить 3 раза — в последний раз написать самому.'} Потом — в «Выучено».</p>
+    <button class="btn btn-orange btn-wide" data-act="${act}">Закрепить</button>
   </section>`;
 }
 
@@ -564,8 +566,8 @@ function renderCats(arg) {
   const c = counts();
   return `<header class="page-head"><h1>Категории</h1><button class="btn btn-blue btn-sm" data-act="add-word">${IC.plus}<span>Своё слово</span></button></header>
     <div class="dict-stats">
-      <div><b class="c-green">${c.learned}</b><small>изучено</small></div>
-      <div><b class="c-orange">${c.learning}</b><small>изучаю</small></div>
+      <div><b class="c-green">${c.learned}</b><small>выучено</small></div>
+      <div><b class="c-orange">${c.learning}</b><small>закрепляю</small></div>
       <div><b>${c.new}</b><small>впереди</small></div>
     </div>
     <div class="search">${IC.search}<input id="wsearch" type="search" placeholder="Найти слово или перевод" value="${esc(wv.q)}"></div>
@@ -583,7 +585,7 @@ function renderCat(id) {
   const sorted = list.slice().sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
   return `<header class="page-head"><a class="icon-btn" href="#/cats" aria-label="Назад">${IC.back}</a><h1 class="grow">${esc(c.name)}</h1></header>
     <section class="cat-hero u-${catColor(id)}">
-      <div class="ch-nums"><b>${done}</b><span>из ${words(cn.total)} выучено</span></div>
+      <div class="ch-nums"><b>${cn.learned}</b><span>из ${words(cn.total)} выучено${cn.learning ? ` · ${cn.learning} закрепляю` : ''}</span></div>
       <div class="lc-bar"><i style="width:${(done / cn.total) * 100}%"></i></div>
       <div class="ch-actions">
         <button class="btn btn-white" data-act="cat-learn" data-cat="${esc(id)}" ${cn.new ? '' : 'disabled'}>Учить новые</button>
@@ -764,7 +766,7 @@ function answer(ok, extra = {}) {
       grade(id, ok, lesson.consolidate);
       if (lesson.consolidate && ok && was !== 'learned' && status(id) === 'learned') {
         lesson.mastered = (lesson.mastered || 0) + 1;
-        lesson.answered.note = 'Закреплено! Слово ушло в изученные';
+        lesson.answered.note = 'Закреплено! Теперь это в «Выучено» ✓';
       }
     }
   }
@@ -816,9 +818,9 @@ function startPhraseLesson(fresh, review, back = '#/phrases') {
     steps.push({ t: 'pintro', id, phrase: true }, { t: 'pchoice', id, phrase: true });
     later.push({ t: 'pbuild', id, phrase: true });
   }
-  for (const id of review) later.push({ t: pick(['pbuild', 'pbuild', 'preverse']), id, phrase: true });
+  for (const id of review) later.push({ t: strength(id) >= 2 ? 'pbuild' : pick(['pbuild', 'preverse']), id, phrase: true });
   steps.push(...shuffle(later));
-  lesson = { back, consolidate: !fresh.length, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  lesson = { back, kind: 'phrase', consolidate: !fresh.length, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
 }
 function learnPhrases(list, back) {
@@ -882,10 +884,10 @@ function phraseBuildView(st, w) {
     <div class="build-answer ${a ? (a.ok ? 'right' : 'wrong') : ''}">${st.picked.map((i) => `<button class="tile" data-act="tile-back" data-i="${i}" ${a ? 'disabled' : ''}>${esc(st.bank[i].text)}</button>`).join('')}</div>
     <div class="build-bank">${st.bank.map((b) => { const used = st.picked.includes(b.i); return `<button class="tile ${used ? 'used' : ''}" data-act="tile" data-i="${b.i}" ${used || a ? 'disabled' : ''}>${esc(b.text)}</button>`; }).join('')}</div>`;
 }
-const phraseRow = (x) => { const st = status(x.id); return `<div class="phrase-row" data-act="say" data-id="${esc(x.id)}">
+const phraseRow = (x) => `<div class="phrase-row" data-act="say" data-id="${esc(x.id)}">
   ${say(x.id, 'say-sm')}
   <div class="pr-main"><b>${esc(x.w)}</b><span>${esc(x.t)}</span>${x.note ? `<small>${esc(x.note)}</small>` : ''}</div>
-  <span class="st-pill st-${st}">${STATUS_NAME[st]}</span></div>`; };
+  ${statusMark(x.id)}</div>`;
 function renderPhrases(arg) {
   if (!hasPhrases()) return `<div class="empty">${cat('think', 90)}<p>Фразы скоро появятся</p></div>`;
   const db = D();
@@ -894,7 +896,7 @@ function renderPhrases(arg) {
     const color = UNIT_COLORS[db.phCats.indexOf(c) % UNIT_COLORS.length];
     return `<header class="page-head"><a class="icon-btn" href="#/phrases" aria-label="Назад">${IC.back}</a><h1 class="grow">${esc(c.name)}</h1></header>
       <section class="cat-hero u-${color}">
-        <div class="ch-nums"><b>${done}</b><span>из ${cn.total} фраз выучено</span></div>
+        <div class="ch-nums"><b>${cn.learned}</b><span>из ${count(cn.total, 'phrase')} выучено${cn.learning ? ` · ${cn.learning} закрепляю` : ''}</span></div>
         <div class="lc-bar"><i style="width:${(done / cn.total) * 100}%"></i></div>
         <div class="ch-actions two">
           <button class="btn btn-white" data-act="ph-learn" data-cat="${esc(arg)}" ${cn.new ? '' : 'disabled'}>Учить новые</button>
@@ -907,10 +909,11 @@ function renderPhrases(arg) {
   return `<header class="page-head"><h1>Фразы</h1></header>
     <p class="lead">Устойчивые выражения — как на самом деле говорят ${S.lang === 'en' ? 'англичане и американцы' : 'испанцы'}.</p>
     <div class="dict-stats">
-      <div><b class="c-green">${cn.learned}</b><small>изучено</small></div>
-      <div><b class="c-orange">${cn.learning}</b><small>изучаю</small></div>
+      <div><b class="c-green">${cn.learned}</b><small>выучено</small></div>
+      <div><b class="c-orange">${cn.learning}</b><small>закрепляю</small></div>
       <div><b>${cn.new}</b><small>впереди</small></div>
     </div>
+    ${consolidateCard(db.phrases.filter((x) => status(x.id) === 'learning'), 'ph-consolidate', 'phrase')}
     <div class="verb-actions">
       <button class="btn btn-green" data-act="ph-learn" ${cn.new ? '' : 'disabled'}>Учить новые</button>
       <button class="btn btn-blue" data-act="ph-review" ${cn.learned + cn.learning ? '' : 'disabled'}>${due ? `Повторить · ${due}` : 'Прогнать выученные'}</button>
@@ -941,7 +944,7 @@ function startVerbLesson(fresh, review) {
   }
   for (const id of review) later.push({ t: 'vforms', id, verb: true });
   steps.push(...shuffle(later));
-  lesson = { back: '#/verbs', consolidate: !fresh.length, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  lesson = { back: '#/verbs', kind: 'verb', consolidate: !fresh.length, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
 }
 function verbIntroView(w) {
@@ -999,10 +1002,11 @@ function renderVerbs() {
     <header class="page-head"><h1>Глаголы</h1></header>
     <p class="lead">Неправильные глаголы: учим сразу все три формы.</p>
     <div class="dict-stats">
-      <div><b class="c-green">${c.learned}</b><small>изучено</small></div>
-      <div><b class="c-orange">${c.learning}</b><small>изучаю</small></div>
+      <div><b class="c-green">${c.learned}</b><small>выучено</small></div>
+      <div><b class="c-orange">${c.learning}</b><small>закрепляю</small></div>
       <div><b>${c.new}</b><small>впереди</small></div>
     </div>
+    ${consolidateCard(all.filter((v) => status(v.id) === 'learning'), 'verbs-consolidate', 'verb')}
     <div class="verb-actions">
       <button class="btn btn-green" data-act="verbs-learn" ${c.new ? '' : 'disabled'}>Учить новые</button>
       <button class="btn btn-blue" data-act="verbs-review" ${c.learned + c.learning ? '' : 'disabled'}>${due ? `Повторить · ${due}` : 'Прогнать выученные'}</button>
@@ -1012,7 +1016,7 @@ function renderVerbs() {
       ${say(v.id, 'say-sm')}
       <div class="vr-forms"><b>${esc(v.v1)}</b><span>${esc(v.v2)}</span><span>${esc(v.v3)}</span></div>
       <div class="vr-tr">${esc(v.t)}</div>
-      <span class="st-pill st-${st}">${STATUS_NAME[st]}</span>
+      ${statusMark(v.id)}
     </div>`; }).join('')}</div>`;
 }
 const vv = { tab: '1' };
@@ -1041,9 +1045,9 @@ function renderLessonEnd() {
     <main class="lesson-end">
       <div class="end-hero">${cat(acc >= 70 ? 'happy' : 'idle', 150)}</div>
       <h1>${acc >= 90 ? 'Урок пройден идеально!' : acc >= 70 ? 'Урок пройден!' : 'Хорошая тренировка!'}</h1>
-      <p class="end-sub">${lesson.consolidate ? `Осталось закрепить: ${words(learningWords().length)}` : `Сегодня выучено: ${words(dayStat().n)}`}</p>
+      <p class="end-sub">${lesson.consolidate ? `Осталось закрепить: ${count(lesson.kind === 'phrase' ? D().phrases.filter((x) => status(x.id) === 'learning').length : lesson.kind === 'verb' ? D().verbs.filter((x) => status(x.id) === 'learning').length : learningWords().length, lesson.kind || 'word')}` : lesson.kind ? `Теперь закрепи ${lesson.kind === 'phrase' ? 'их' : 'эти глаголы'} — кнопка «Закрепить» на странице ${lesson.kind === 'phrase' ? 'фраз' : 'глаголов'}` : `Начато сегодня: ${count(dayStat().n)}`}</p>
       <div class="end-stats">
-        ${lesson.consolidate ? `<div class="end-stat yellow"><small>Закреплено</small><b>+${lesson.mastered || 0}</b></div>` : `<div class="end-stat yellow"><small>Новых слов</small><b>+${learnedNow}</b></div>`}
+        ${lesson.consolidate ? `<div class="end-stat yellow"><small>Закреплено</small><b>+${lesson.mastered || 0}</b></div>` : `<div class="end-stat yellow"><small>Новых ${NOUN[lesson.kind || 'word'][2]}</small><b>+${learnedNow}</b></div>`}
         <div class="end-stat green"><small>${acc >= 90 ? 'Отлично' : 'Точность'}</small><b>${IC.check}${acc}%</b></div>
         <div class="end-stat blue"><small>Время</small><b>${time}</b></div>
       </div>
@@ -1071,7 +1075,7 @@ function wordRow(w) {
   return `<div class="word-row" data-act="word" data-id="${esc(w.id)}">
     ${say(w.id, 'say-sm')}
     <div class="wr-main"><b>${esc(w.w)}${r?.st ? ' <span class="star-on">★</span>' : ''}</b><span>${esc(w.t)}</span></div>
-    ${st === 'learning' ? dots(w.id) : `<span class="st-pill st-${st}">${STATUS_NAME[st]}</span>`}
+    ${statusMark(w.id)}
   </div>`;
 }
 function listHTML() {
@@ -1242,7 +1246,7 @@ function renderProfile() {
     </header>
     <h2 class="h2">Статистика</h2>
     <section class="stat-grid">
-      <div class="stat-box">${ICON.book}<div><b>${c.learned + c.learning}</b><small>выучено из ${c.total}</small></div></div>
+      <div class="stat-box">${ICON.book}<div><b>${c.learned}</b><small>выучено из ${c.total}</small></div></div>
       <div class="stat-box">${ICON.words}<div><b>${c.new}</b><small>осталось</small></div></div>
       <div class="stat-box">${ICON.target}<div><b>+${dayStat().n}</b><small>сегодня</small></div></div>
       <div class="stat-box">${ICON.repeat}<div><b>+${week}</b><small>за 7 дней</small></div></div>
@@ -1488,6 +1492,14 @@ const actions = {
   'say-slow': (el) => { const s = S.settings.slow; S.settings.slow = true; speak(anyWord(el.dataset.id)); S.settings.slow = s; },
   'learn-main': learnMain,
   consolidate: () => startConsolidate(),
+  'ph-consolidate': () => {
+    const ids = D().phrases.filter((x) => status(x.id) === 'learning').map((x) => x.id).sort((a, b) => strength(b) - strength(a));
+    startPhraseLesson([], shuffle(ids.slice(0, 10)), '#/phrases');
+  },
+  'verbs-consolidate': () => {
+    const ids = D().verbs.filter((v) => status(v.id) === 'learning').map((v) => v.id).sort((a, b) => strength(b) - strength(a));
+    startVerbLesson([], shuffle(ids.slice(0, 10)));
+  },
   'learn-level': (el) => learnFrom(levelWords(el.dataset.lv)),
   'cat-learn': (el) => learnFrom(D().words.filter((w) => w.cat === el.dataset.cat)),
   'cat-quiz': (el) => {

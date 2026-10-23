@@ -278,6 +278,10 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
 .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
 .dots i.on { background: var(--orange); }
 .word-row .dots i { width: 10px; height: 10px; }
+.st-mark { flex: none; display: inline-flex; align-items: center; padding: 6px 8px; border-radius: 99px; background: #fff2d6; }
+.st-mark .dots i { width: 9px; height: 9px; }
+.st-mark .dots i:not(.on) { background: #ffd9a0; }
+.verb-row .st-mark { grid-area: pill; }
 
 /* ---------- фразы ---------- */
 .bw-word.phrase { font-size: 22px; }
