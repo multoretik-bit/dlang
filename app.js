@@ -74,7 +74,7 @@ const D = () => DB[S.lang];
 
 async function loadLang(lang) {
   if (DB[lang]) return DB[lang];
-  const res = await fetch(`data/${lang}.json?v=3`);
+  const res = await fetch(`data/${lang}.json?v=4`);
   if (!res.ok) throw new Error(`data/${lang}.json: ${res.status}`);
   const data = await res.json();
   DB[lang] = {
@@ -82,6 +82,13 @@ async function loadLang(lang) {
     base: data.words.map(([id, w, ipa, pos, t, lvl, cat, ex, exr]) => ({ id, w, ipa, pos, t, lvl, cat, ex, exr, audio: true })),
   };
   indexLang(lang);
+  if (lang === 'en') {
+    try {
+      const v = await (await fetch('data/verbs-en.json?v=1')).json();
+      DB[lang].verbs = v.verbs.map(([id, v1, v2, v3, t, tier]) => ({ id, v1, v2, v3, t, tier, w: `${v1} – ${v2} – ${v3}`, src: `audio/en/verbs/${id}.mp3`, audio: true, verb: true }));
+      DB[lang].vbById = new Map(DB[lang].verbs.map((v) => [v.id, v]));
+    } catch {}
+  }
   await applyBundledImport(lang);
   return DB[lang];
 }
@@ -95,6 +102,9 @@ function indexLang(lang = S.lang) {
   db.path = null;
 }
 const W = (id) => D()?.byId.get(id);
+const VB = (id) => D()?.vbById?.get(id);
+const anyWord = (id) => W(id) || VB(id);
+const hasVerbs = () => !!D()?.verbs?.length;
 const catName = (w) => (D().catMap.get(w.cat) || MINE).name;
 
 function status(id) {
@@ -191,7 +201,7 @@ function speak(w, example = false) {
   if (player) { player.pause(); player = null; }
   window.speechSynthesis?.cancel();
   if (!w.audio) return tts(text);
-  const a = new Audio(`audio/${S.lang}/${w.id}${example ? 'x' : ''}.mp3`);
+  const a = new Audio(w.src && !example ? w.src : `audio/${S.lang}/${w.id}${example ? 'x' : ''}.mp3`);
   a.playbackRate = S.settings.slow ? 0.8 : 1;
   a.onerror = () => tts(text);
   a.play().catch((e) => { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') tts(text); });
@@ -300,6 +310,7 @@ const IC = {
 // цветные иконки меню и статистики
 const ICON = {
   get review() { return ICON.repeat; },
+  verbs: '<svg viewBox="0 0 32 32"><rect x="4" y="5" width="24" height="6" rx="3" fill="#ce82ff"/><rect x="4" y="13" width="18" height="6" rx="3" fill="#1cb0f6"/><rect x="4" y="21" width="12" height="6" rx="3" fill="#58cc02"/></svg>',
   learn: '<svg viewBox="0 0 32 32"><path d="M5 14.5 16 5l11 9.5V27a1.5 1.5 0 0 1-1.5 1.5h-19A1.5 1.5 0 0 1 5 27z" fill="#ffc800"/><path d="M3 15.5 16 4l13 11.5" fill="none" stroke="#ff4b4b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="12.5" y="18" width="7" height="10.5" rx="1.5" fill="#e5a000"/></svg>',
   words: '<svg viewBox="0 0 32 32"><path d="M5 6.5A2.5 2.5 0 0 1 7.5 4H26v21H7.5A2.5 2.5 0 0 0 5 27.5z" fill="#1cb0f6"/><path d="M5 27.5A2.5 2.5 0 0 1 7.5 25H26v3.5H7.5A2.5 2.5 0 0 1 5 27.5z" fill="#ddf4ff"/><path d="M11 10h10M11 14.5h7" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
   cards: '<svg viewBox="0 0 32 32"><rect x="11" y="3.5" width="16" height="21" rx="3.5" fill="#ce82ff" transform="rotate(8 19 14)"/><rect x="5" y="7" width="16" height="21" rx="3.5" fill="#58cc02"/><path d="M10 15.5l2.5 2.5 5-5.5" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -369,7 +380,9 @@ async function render() {
   const [page, arg] = route();
   if (page === 'lesson') return lesson ? renderLesson() : go('#/learn');
   if (page === 'cards') return cards ? renderCardSession() : go('#/review');
-  const views = { learn: renderLearn, cats: () => renderCats(arg), review: renderReview, words: () => renderWords(arg), profile: renderProfile };
+  if (page === 'words') return go('#/cats');
+  if (page === 'verbs' && !hasVerbs()) return go('#/learn');
+  const views = { learn: renderLearn, cats: () => renderCats(arg), verbs: renderVerbs, review: renderReview, profile: renderProfile };
   const name = views[page] ? page : 'learn';
   app.innerHTML = `
     <div class="shell">
@@ -381,15 +394,16 @@ async function render() {
   afterRender[name]?.();
 }
 const afterRender = {};
-const NAV = [['learn', 'Учить'], ['cats', 'Категории'], ['review', 'Повторение'], ['words', 'Словарь'], ['profile', 'Профиль']];
+const NAV_ALL = [['learn', 'Учить'], ['cats', 'Категории'], ['verbs', 'Глаголы'], ['review', 'Повторение'], ['profile', 'Профиль']];
+const navItems = () => NAV_ALL.filter(([id]) => id !== 'verbs' || hasVerbs());
 function sidebar(page) {
   return `<nav class="sidebar">
     <a class="logo" href="#/learn">dLang</a>
-    ${NAV.map(([id, label]) => `<a href="#/${id}" class="side-item ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}
+    ${navItems().map(([id, label]) => `<a href="#/${id}" class="side-item ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}
   </nav>`;
 }
 function tabbar(page) {
-  return `<nav class="tabbar">${NAV.map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}</nav>`;
+  return `<nav class="tabbar" style="--n:${navItems().length}">${navItems().map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}</nav>`;
 }
 // «Выучено» — все слова, которые уже пройдены (изучаю + изучено), «осталось» — ещё не тронутые.
 function statsBar() {
@@ -503,8 +517,16 @@ function catList() {
 const catColor = (id) => UNIT_COLORS[Math.max(0, catList().findIndex(([c]) => c.id === id)) % UNIT_COLORS.length];
 function renderCats(arg) {
   if (arg && D().catMap.has(arg)) return renderCat(arg);
-  return `<header class="page-head"><h1>Категории</h1></header>
-    <div class="cat-grid">${catList().map(([c, ws], i) => {
+  const c = counts();
+  return `<header class="page-head"><h1>Категории</h1><button class="btn btn-blue btn-sm" data-act="add-word">${IC.plus}<span>Своё слово</span></button></header>
+    <div class="dict-stats">
+      <div><b class="c-green">${c.learned}</b><small>изучено</small></div>
+      <div><b class="c-orange">${c.learning}</b><small>изучаю</small></div>
+      <div><b>${c.new}</b><small>впереди</small></div>
+    </div>
+    <div class="search">${IC.search}<input id="wsearch" type="search" placeholder="Найти слово или перевод" value="${esc(wv.q)}"></div>
+    <div id="wlist" class="word-list">${wv.q ? listHTML() : ''}</div>
+    <div class="cat-grid ${wv.q ? 'hidden' : ''}" id="cat-tiles">${catList().map(([c, ws], i) => {
       const cn = counts(ws), done = cn.learned + cn.learning, pct = Math.round((done / cn.total) * 100);
       return `<a class="cat-tile u-${UNIT_COLORS[i % UNIT_COLORS.length]}" href="#/cats/${c.id}">
         <span class="ct-ring" style="--p:${pct}"><b>${pct}%</b></span>
@@ -555,10 +577,13 @@ const step = () => lesson.steps[lesson.i];
 function renderLesson() {
   clearTimeout(lesson.timer);
   if (lesson.i >= lesson.steps.length) return renderLessonEnd();
-  const st = step(), w = st.id && W(st.id);
+  const st = step(), w = st.id && (st.verb ? VB(st.id) : W(st.id));
   if (st.id && !w) { lesson.i++; return renderLesson(); }
   let body = '';
-  if (st.t === 'intro') body = introView(w);
+  if (st.t === 'vintro') body = verbIntroView(w);
+  else if (st.t === 'vchoice') body = verbChoiceView(st, w);
+  else if (st.t === 'vforms') body = verbFormsView(w);
+  else if (st.t === 'intro') body = introView(w);
   else if (st.t === 'match') body = matchView(st);
   else if (st.t === 'type') body = typeView(w);
   else body = choiceView(st, w);
@@ -573,11 +598,12 @@ function renderLesson() {
       ${footerView(st, w)}
     </main>`;
   if (!lesson.answered) {
-    if (st.t === 'intro' && S.settings.autoplay) speak(w);
+    if ((st.t === 'intro' || st.t === 'vintro') && S.settings.autoplay) speak(w);
     else if (st.t === 'listen') speak(w);
     else if (st.t === 'choice' && S.settings.autoplay) speak(w);
   }
   if (st.t === 'type' && !lesson.answered) $('#typed')?.focus();
+  if (st.t === 'vforms' && !lesson.answered) $('#f2')?.focus();
 }
 
 function introView(w) {
@@ -645,7 +671,7 @@ function matchView(st) {
 }
 function footerView(st, w) {
   const a = lesson.answered;
-  if (st.t === 'intro') return `<footer class="lesson-foot"><div class="foot-in">
+  if (st.t === 'intro' || st.t === 'vintro') return `<footer class="lesson-foot"><div class="foot-in">
     <div class="foot-left">
       <button class="btn btn-ghost" data-act="intro-known" title="Отметить выученным и убрать из урока">Уже знаю</button>
       <button class="btn btn-ghost" data-act="intro-skip" title="Убрать из урока, слово останется новым">Пропустить</button>
@@ -654,7 +680,7 @@ function footerView(st, w) {
   if (st.t === 'match') return `<footer class="lesson-foot"><div class="foot-in">
     <span></span><button class="btn btn-green" data-act="next" ${st.done?.length >= st.left?.length ? '' : 'disabled'}>Дальше</button></div></footer>`;
   if (!a) {
-    const ready = st.t === 'type' || lesson.sel;
+    const ready = st.t === 'type' || st.t === 'vforms' || lesson.sel;
     return `<footer class="lesson-foot"><div class="foot-in">
       <button class="btn btn-ghost" data-act="skip">Не знаю</button>
       <button class="btn btn-green" data-act="check" ${ready ? '' : 'disabled'}>Проверить</button></div></footer>`;
@@ -681,7 +707,7 @@ function answer(ok, extra = {}) {
     lesson.combo = 0;
     if ((lesson.retries[id] || 0) < 2) {
       lesson.retries[id] = (lesson.retries[id] || 0) + 1;
-      lesson.steps.splice(Math.min(lesson.i + 3, lesson.steps.length), 0, { t: 'choice', id });
+      lesson.steps.splice(Math.min(lesson.i + 3, lesson.steps.length), 0, st.verb ? { t: 'vforms', id, verb: true } : { t: 'choice', id });
     }
   }
   if (!lesson.graded.has(id)) {
@@ -691,11 +717,18 @@ function answer(ok, extra = {}) {
   save();
   sfx(ok ? 'ok' : 'bad');
   renderLesson();
-  if (st.t !== 'listen') speak(W(id));
+  if (st.t !== 'listen') speak(st.verb ? VB(id) : W(id));
 }
 function checkAnswer() {
   const st = step();
   if (!st || lesson.answered) return;
+  if (st.t === 'vchoice') { if (lesson.sel != null) answer(lesson.sel === String(st.correct)); return; }
+  if (st.t === 'vforms') {
+    const w = VB(st.id), f2 = $('#f2').value, f3 = $('#f3').value;
+    if (!f2.trim() && !f3.trim()) return;
+    const ok2 = formOk(f2, w.v2), ok3 = formOk(f3, w.v3);
+    return answer(ok2 && ok3, { f2, f3, ok2, ok3 });
+  }
   const w = W(st.id);
   if (st.t === 'type') {
     const typed = $('#typed').value, res = checkTyped(typed, w);
@@ -712,6 +745,100 @@ function dropFromLesson(id) {
   save();
   nextStep();
 }
+// ---------- глаголы: три формы ----------
+const verbStatusList = (list) => { const c = { new: 0, learning: 0, learned: 0, total: list.length }; for (const v of list) c[status(v.id)]++; return c; };
+const verbDue = () => { const t = today(); return D().verbs.filter((v) => { const r = LP().words[v.id]; return r && r.s >= 1 && r.due <= t; }).map((v) => v.id); };
+// форма принимается, если каждый введённый вариант есть в списке (was/were, learnt/learned)
+function formOk(input, spec) {
+  const allowed = spec.split('/').map(norm);
+  const parts = norm(input).split(/\s*(?:\/|,| or )\s*/).filter(Boolean);
+  return parts.length > 0 && parts.every((x) => allowed.includes(x));
+}
+function startVerbLesson(fresh, review) {
+  if (!fresh.length && !review.length) return toast('Здесь пока нечего повторять');
+  const steps = [], later = [];
+  for (const id of fresh) {
+    steps.push({ t: 'vintro', id, verb: true }, { t: 'vchoice', id, verb: true });
+    later.push({ t: 'vforms', id, verb: true });
+  }
+  for (const id of review) later.push({ t: 'vforms', id, verb: true });
+  steps.push(...shuffle(later));
+  lesson = { back: '#/verbs', steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  go('#/lesson');
+}
+function verbIntroView(w) {
+  const r = rec(w.id);
+  return `
+    <h1 class="ex-title"><span class="tag-new">Новый глагол</span></h1>
+    <div class="speaker-row">${cat('happy', 96)}
+      <div class="bubble bubble-word"><div class="bw-line">${say(w.id, 'say-lg')}<span class="bw-word">${esc(w.v1)}</span></div><div class="bw-meta">${esc(w.t)}</div></div>
+    </div>
+    <div class="triplet">
+      <div class="tp"><small>1 форма</small><b>${esc(w.v1)}</b></div>
+      <div class="tp"><small>2 форма</small><b>${esc(w.v2)}</b></div>
+      <div class="tp"><small>3 форма</small><b>${esc(w.v3)}</b></div>
+    </div>
+    <p class="tp-hint">2-я форма — прошедшее время: <i>Yesterday I ${esc(w.v2.split('/')[0])}…</i><br>3-я — после have / has и в пассиве: <i>I have ${esc(w.v3.split('/')[0])}…</i></p>
+    <label class="assoc"><span>Ассоциация, чтобы запомнить</span>
+      <textarea data-assoc="${esc(w.id)}" rows="2" placeholder="Например: go — went — gone: «пошёл — ушёл — пропал»">${esc(r?.as || '')}</textarea></label>`;
+}
+function verbChoiceView(st, w) {
+  if (!st.opts) {
+    const reg = (x) => (x.endsWith('e') ? x + 'd' : x + 'ed');
+    const v2 = w.v2.split('/')[0], v3 = w.v3.split('/')[0];
+    const fakes = [`${reg(w.v1)} – ${reg(w.v1)}`, `${v2} – ${reg(w.v1)}`, `${reg(w.v1)} – ${v3}`, `${v3} – ${v2}`, `${v2} – ${v2}`, `${v3} – ${v3}`]
+      .map((f) => `${w.v1} – ${f}`).filter((f, i, a) => f !== w.w && f !== `${w.v1} – ${v2} – ${v3}` && a.indexOf(f) === i);
+    st.opts = shuffle([w.w, ...shuffle(fakes).slice(0, 3)]);
+    st.correct = st.opts.indexOf(w.w);
+  }
+  const a = lesson.answered;
+  return `<h1 class="ex-title">Выбери правильные формы</h1>
+    <div class="speaker-row">${cat('think', 96)}<div class="bubble bubble-word"><span class="bw-word">${esc(w.v1)}</span><div class="bw-meta">${esc(w.t)}</div></div></div>
+    <div class="choices one">${st.opts.map((o, i) => {
+      let cls = lesson.sel === String(i) ? 'sel' : '';
+      if (a) cls = i === st.correct ? 'right' : String(i) === lesson.sel ? 'wrong' : '';
+      return `<button class="choice" data-act="pick" data-id="${i}" ${a ? 'disabled' : ''}><kbd>${i + 1}</kbd><span>${esc(o)}</span></button>`;
+    }).join('')}</div>`;
+}
+function verbFormsView(w) {
+  const a = lesson.answered;
+  const cell = (n, label, val, id, ok) => `<label class="form-cell ${a ? (ok ? 'right' : 'wrong') : ''}"><small>${n} форма · ${label}</small>
+    <input id="${id}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" lang="en" value="${esc(val || '')}" ${a ? 'disabled' : ''} placeholder="?"></label>`;
+  return `<h1 class="ex-title">Напиши 2-ю и 3-ю форму</h1>
+    <div class="speaker-row">${cat('think', 96)}<div class="bubble bubble-word"><span class="bw-word">${esc(w.v1)}</span><div class="bw-meta">${esc(w.t)}</div></div></div>
+    <form class="forms" data-form="type">
+      <div class="form-cell fixed"><small>1 форма</small><b>${esc(w.v1)}</b></div>
+      ${cell(2, 'Past Simple', a?.f2, 'f2', a?.ok2)}
+      ${cell(3, 'Past Participle', a?.f3, 'f3', a?.ok3)}
+      <button hidden></button>
+    </form>`;
+}
+function renderVerbs() {
+  if (!hasVerbs()) return `<div class="empty">${cat('think', 90)}<p>Три формы глагола есть только в английском</p></div>`;
+  const all = D().verbs, c = verbStatusList(all), due = verbDue().length;
+  const tab = vv.tab, list = all.filter((v) => tab === 'all' || String(v.tier) === tab);
+  return `
+    <header class="page-head"><h1>Глаголы</h1></header>
+    <p class="lead">Неправильные глаголы: учим сразу все три формы.</p>
+    <div class="dict-stats">
+      <div><b class="c-green">${c.learned}</b><small>изучено</small></div>
+      <div><b class="c-orange">${c.learning}</b><small>изучаю</small></div>
+      <div><b>${c.new}</b><small>впереди</small></div>
+    </div>
+    <div class="verb-actions">
+      <button class="btn btn-green" data-act="verbs-learn" ${c.new ? '' : 'disabled'}>Учить новые</button>
+      <button class="btn btn-blue" data-act="verbs-review" ${c.learned + c.learning ? '' : 'disabled'}>${due ? `Повторить · ${due}` : 'Прогнать выученные'}</button>
+    </div>
+    <div class="tabs-line">${[['1', 'Самые нужные'], ['2', 'Остальные'], ['all', 'Все']].map(([id, label]) => `<button class="tl ${tab === id ? 'on' : ''}" data-act="verbs-tab" data-tab="${id}">${label}</button>`).join('')}</div>
+    <div class="verb-list">${list.map((v) => { const st = status(v.id); return `<div class="verb-row">
+      ${say(v.id, 'say-sm')}
+      <div class="vr-forms"><b>${esc(v.v1)}</b><span>${esc(v.v2)}</span><span>${esc(v.v3)}</span></div>
+      <div class="vr-tr">${esc(v.t)}</div>
+      <span class="st-pill st-${st}">${STATUS_NAME[st]}</span>
+    </div>`; }).join('')}</div>`;
+}
+const vv = { tab: '1' };
+
 function nextStep() {
   if (!lesson) return;
   lesson.answered = null;
@@ -750,7 +877,6 @@ function renderLessonEnd() {
 
 // ---------- словарь ----------
 const wv = { q: '', seg: 'all', cat: '', limit: 120 };
-const SEGS = [['all', 'Все'], ['new', 'Новые'], ['learning', 'Изучаю'], ['learned', 'Изучено'], ['star', 'Избранное']];
 
 function filterWords() {
   const q = norm(wv.q), qa = stripAcc(q);
@@ -776,25 +902,13 @@ function listHTML() {
   return `<p class="list-count">${words(list.length)}</p>` + list.slice(0, wv.limit).map(wordRow).join('') +
     (list.length > wv.limit ? `<button class="btn btn-ghost btn-wide" data-act="more-rows">Показать ещё ${list.length - wv.limit}</button>` : '');
 }
-function renderWords(arg) {
-  if (arg && D().catMap.has(arg)) { wv.cat = arg; history.replaceState(null, '', '#/words'); }
-  const c = counts();
-  const cats = [['', 'Все темы'], ...[...D().cats, MINE, OLD].filter((x) => D().words.some((w) => w.cat === x.id)).map((x) => [x.id, x.name])];
-  return `
-    <header class="page-head"><h1>Словарь</h1><button class="btn btn-blue btn-sm" data-act="add-word">${IC.plus}<span>Своё слово</span></button></header>
-    <div class="dict-stats">
-      <div><b class="c-green">${c.learned}</b><small>изучено</small></div>
-      <div><b class="c-orange">${c.learning}</b><small>изучаю</small></div>
-      <div><b>${c.new}</b><small>впереди</small></div>
-    </div>
-    <div class="search">${IC.search}<input id="wsearch" type="search" placeholder="Найти слово или перевод" value="${esc(wv.q)}"></div>
-    <div class="tabs-line">${SEGS.map(([id, label]) => `<button class="tl ${wv.seg === id ? 'on' : ''}" data-act="seg" data-seg="${id}">${label}</button>`).join('')}</div>
-    <div class="chips-scroll">${cats.map(([id, name]) => `<button class="chip ${wv.cat === id ? 'on' : ''}" data-act="cat-filter" data-cat="${esc(id)}">${esc(name)}</button>`).join('')}</div>
-    <div id="wlist" class="word-list">${listHTML()}</div>`;
-}
-afterRender.words = () => {
+afterRender.cats = () => {
   const input = $('#wsearch');
-  input?.addEventListener('input', () => { wv.q = input.value; wv.limit = 120; $('#wlist').innerHTML = listHTML(); });
+  input?.addEventListener('input', () => {
+    wv.q = input.value; wv.limit = 120;
+    $('#wlist').innerHTML = wv.q.trim() ? listHTML() : '';
+    $('#cat-tiles')?.classList.toggle('hidden', !!wv.q.trim());
+  });
 };
 
 // ---------- повторение и карточки ----------
@@ -1068,7 +1182,7 @@ function saveWordForm(form) {
   indexLang();
   save();
   closeSheet();
-  toast(i >= 0 ? 'Сохранено' : 'Слово добавлено — оно в разделе «Мои слова» на пути');
+  toast(i >= 0 ? 'Сохранено' : 'Слово добавлено — оно в «Мои слова»');
   render();
 }
 function langSheet() {
@@ -1085,9 +1199,9 @@ function langSheet() {
 // при первой загрузке слова отмечаются изученными сами.
 async function applyBundledImport(lang) {
   const lp = LP(lang);
-  if (lp.importedOld) return;
+  if (lp.importedOld || lang !== 'en') return; // старый сайт был только английский
   try {
-    const res = await fetch(`data/import-${lang}.json?v=3`);
+    const res = await fetch(`data/import-${lang}.json?v=4`);
     if (!res.ok) return;
     const list = await res.json();
     const db = DB[lang], index = new Map();
@@ -1190,9 +1304,9 @@ const actions = {
     go('#/learn');
   },
   go: (el) => go(el.dataset.to),
-  say: (el) => speak(W(el.dataset.id)),
-  'say-ex': (el) => speak(W(el.dataset.id), true),
-  'say-slow': (el) => { const s = S.settings.slow; S.settings.slow = true; speak(W(el.dataset.id)); S.settings.slow = s; },
+  say: (el) => speak(anyWord(el.dataset.id)),
+  'say-ex': (el) => speak(anyWord(el.dataset.id), true),
+  'say-slow': (el) => { const s = S.settings.slow; S.settings.slow = true; speak(anyWord(el.dataset.id)); S.settings.slow = s; },
   'learn-main': learnMain,
   'learn-level': (el) => learnFrom(levelWords(el.dataset.lv)),
   'cat-learn': (el) => learnFrom(D().words.filter((w) => w.cat === el.dataset.cat)),
@@ -1225,8 +1339,17 @@ const actions = {
   star: (el) => { const r = rec(el.dataset.id, true); r.st = !r.st; save(); el.classList.toggle('on', r.st); },
   know: (el) => { markKnown(el.dataset.id); save(); closeSheet(); toast('Отмечено как изученное'); render(); },
   'reset-word': (el) => { resetWord(el.dataset.id); save(); closeSheet(); toast('Слово вернётся в уроки'); render(); },
-  seg: (el) => { wv.seg = el.dataset.seg; wv.limit = 120; render(); },
-  'cat-filter': (el) => { wv.cat = el.dataset.cat; wv.limit = 120; render(); },
+  'verbs-tab': (el) => { vv.tab = el.dataset.tab; render(); },
+  'verbs-learn': () => {
+    const fresh = (tier) => D().verbs.filter((v) => v.tier === tier && status(v.id) === 'new').map((v) => v.id);
+    const pickIds = fresh(1).length ? fresh(1) : fresh(2);
+    startVerbLesson(shuffle(pickIds).slice(0, 5), shuffle(verbDue()).slice(0, 4));
+  },
+  'verbs-review': () => {
+    const due = verbDue();
+    const ids = due.length ? due : D().verbs.filter((v) => status(v.id) !== 'new').map((v) => v.id);
+    startVerbLesson([], shuffle(ids).slice(0, 10));
+  },
   'more-rows': () => { wv.limit += 200; $('#wlist').innerHTML = listHTML(); },
   dir: (el) => { cardDir = el.dataset.dir; render(); },
   'card-grade': (el) => gradeCard(el.dataset.ok === '1'),
@@ -1238,7 +1361,7 @@ const actions = {
   'intro-known': () => { const id = step().id; markKnown(id); dropFromLesson(id); },
   // пропуск: слово уходит из урока, но остаётся новым — выпадет в другой раз
   'intro-skip': () => dropFromLesson(step().id),
-  pick: (el) => { if (lesson.answered) return; lesson.sel = el.dataset.id; if (step().t !== 'listen') speak(W(el.dataset.id)); renderLesson(); },
+  pick: (el) => { if (lesson.answered) return; lesson.sel = el.dataset.id; if (!['listen', 'vchoice'].includes(step().t)) speak(W(el.dataset.id)); renderLesson(); },
   check: checkAnswer,
   skip: () => { if (!lesson.answered) answer(false, { typed: $('#typed')?.value || '' }); },
   next: () => nextStep(),
@@ -1309,10 +1432,11 @@ document.addEventListener('keydown', (e) => {
     const st = step();
     if (e.key === 'Enter' && !e.shiftKey) {
       if (!st) return;
-      if (typing && document.activeElement.id !== 'typed') return;
+      if (typing && !['typed', 'f2', 'f3'].includes(document.activeElement.id)) return;
       e.preventDefault();
+      if (document.activeElement.id === 'f2' && !lesson.answered && !$('#f3').value.trim()) return $('#f3').focus();
       if (lesson.answered) return nextStep();
-      if (st.t === 'intro') return actions['intro-next']();
+      if (st.t === 'intro' || st.t === 'vintro') return actions['intro-next']();
       if (st.t === 'match') { if (st.done?.length >= st.left?.length) nextStep(); return; }
       return checkAnswer();
     }

@@ -2,6 +2,7 @@
 
 audio/<lang>/<id>.mp3  — слово (для испанских существительных — с артиклем)
 audio/<lang>/<id>x.mp3 — пример
+audio/<lang>/verbs/<id>.mp3 — три формы неправильного глагола
 Уже готовые файлы пропускаются, так что скрипт можно перезапускать.
 
     pip install edge-tts
@@ -46,6 +47,12 @@ async def run(lang):
         jobs.append(one(sem, voice, w, out / f"{wid}.mp3", "-5%"))
         if ex:
             jobs.append(one(sem, voice, ex, out / f"{wid}x.mp3", "-5%"))
+    verbs = ROOT / "data" / f"verbs-{lang}.json"
+    if verbs.exists():  # три формы глагола одной записью: «go, went, gone»
+        (out / "verbs").mkdir(exist_ok=True)
+        for vid, v1, v2, v3, t, tier in json.loads(verbs.read_text(encoding="utf-8"))["verbs"]:
+            text = ", ".join(f.replace("/", " or ") for f in (v1, v2, v3))
+            jobs.append(one(sem, voice, text, out / "verbs" / f"{vid}.mp3", "-10%"))
     done = 0
     for i, coro in enumerate(asyncio.as_completed(jobs), 1):
         done += bool(await coro)

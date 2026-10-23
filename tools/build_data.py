@@ -96,6 +96,22 @@ def build(lang):
     return words
 
 
+def build_verbs(lang):
+    """data/src/<lang>/verbs.json: [инфинитив, 2-я форма, 3-я форма, перевод, 1|2] → data/verbs-<lang>.json"""
+    src = ROOT / "data" / "src" / lang / "verbs.json"
+    if not src.exists():
+        return
+    seen, out = set(), []
+    for v1, v2, v3, t, tier in json.loads(src.read_text(encoding="utf-8")):
+        if v1 in seen:
+            continue
+        seen.add(v1)
+        out.append([hashlib.sha1(f"{lang}:verb:{v1}".encode("utf-8")).hexdigest()[:10], v1, v2, v3, t, tier])
+    (ROOT / "data" / f"verbs-{lang}.json").write_text(json.dumps({"verbs": out}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"{lang}: {len(out)} глаголов с тремя формами")
+
+
 if __name__ == "__main__":
     for lang in sys.argv[1:] or ["en", "es"]:
         build(lang)
+        build_verbs(lang)

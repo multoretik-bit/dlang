@@ -108,7 +108,7 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
   height: calc(var(--tab-h) + env(safe-area-inset-bottom)); padding: 8px 12px env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(var(--n, 5), 1fr); gap: 4px;
   background: var(--bg); border-top: 2px solid var(--border);
 }
 .tab { display: grid; place-items: center; border-radius: 12px; border: 2px solid transparent; }
@@ -261,6 +261,38 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
   .deck-btns { width: 100%; }
   .deck-btns .btn { flex: 1; }
 }
+
+/* ---------- глаголы ---------- */
+.verb-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.verb-actions .btn { padding: 0 10px; }
+.verb-list { display: grid; }
+.verb-row { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "say forms pill" "say tr pill"; column-gap: 10px; align-items: center; padding: 10px 4px; border-bottom: 2px solid var(--border); }
+.verb-row .say { grid-area: say; }
+.vr-forms { grid-area: forms; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 17px; }
+.vr-forms span { color: var(--blue); font-weight: 800; }
+.vr-forms span:last-child { color: var(--purple-d); }
+.vr-tr { grid-area: tr; color: var(--sub); font-size: 14px; font-weight: 600; }
+.verb-row .st-pill { grid-area: pill; }
+.triplet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 4px 0 12px; }
+.tp { display: grid; gap: 4px; padding: 14px 8px; border-radius: var(--r-sm); border: 2px solid var(--border); border-bottom-width: 4px; text-align: center; }
+.tp small { color: var(--light); font-size: 12px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+.tp b { font-size: 21px; word-break: break-word; }
+.tp:nth-child(2) b { color: var(--blue); }
+.tp:nth-child(3) b { color: var(--purple-d); }
+.tp-hint { color: var(--sub); font-size: 15px; line-height: 1.5; margin: 0 0 16px; }
+.choices.one { grid-template-columns: 1fr; }
+.forms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.form-cell { display: grid; gap: 6px; padding: 10px; border-radius: var(--r-sm); border: 2px solid var(--border); }
+.form-cell small { color: var(--light); font-size: 11px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; }
+.form-cell b { font-size: 20px; padding: 8px 0; }
+.form-cell input { width: 100%; height: 48px; padding: 0 10px; border-radius: 10px; border: 2px solid var(--border); background: var(--bg-2); font-size: 19px; font-weight: 800; outline: none; }
+.form-cell input:focus { border-color: var(--blue-b); }
+.form-cell.fixed { background: var(--bg-2); }
+.form-cell.right { border-color: #a5ed6e; background: var(--green-bg); }
+.form-cell.right input { color: var(--green-t); border-color: transparent; background: transparent; }
+.form-cell.wrong { border-color: #ffb2b2; background: var(--red-bg); }
+.form-cell.wrong input { color: var(--red-t); text-decoration: line-through; border-color: transparent; background: transparent; }
+@media (max-width: 480px) { .forms { grid-template-columns: 1fr; } .form-cell.fixed b { padding: 0; } }
 
 /* ---------- онбординг ---------- */
 .onboarding { min-height: 100svh; display: flex; flex-direction: column; max-width: 680px; margin: 0 auto; padding: 0 16px; }
