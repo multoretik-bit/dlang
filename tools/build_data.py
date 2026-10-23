@@ -1,4 +1,4 @@
-"""Собирает data/src/<lang>/*.json в компактные data/<lang>.json для сайта.
+"""Собирает data/src/<lang>/<тема>.json (+ import_*.json) в компактные data/<lang>.json для сайта.
 
 id слова = первые 10 символов sha1("<lang>:<word>:<pos>") — по нему же называются mp3,
 поэтому прогресс и озвучка не сбиваются при пересборке.
@@ -47,12 +47,20 @@ def word_id(lang, w, pos):
 def build(lang):
     src = ROOT / "data" / "src" / lang
     seen, words, cats, problems = set(), [], [], []
+    # import_*.json — добавочные слова с полем cat (например, со старого сайта); идут в конец своей темы
+    extra = {}
+    for f in sorted(src.glob("import_*.json")):
+        for e in json.loads(f.read_text(encoding="utf-8")):
+            extra.setdefault(e.get("cat"), []).append(e)
+    unknown = set(extra) - {c[0] for c in CATS}
+    if unknown:
+        problems.append(f"import: неизвестные темы {unknown}")
     for cat, name, emoji in CATS:
         f = src / f"{cat}.json"
         if not f.exists():
             problems.append(f"нет файла {f.name}")
             continue
-        items = json.loads(f.read_text(encoding="utf-8"))
+        items = json.loads(f.read_text(encoding="utf-8")) + extra.get(cat, [])
         kept = 0
         for e in items:
             w = str(e.get("w", "")).strip()

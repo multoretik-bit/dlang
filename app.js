@@ -21,6 +21,7 @@ const LEARNED = 4;                              // с этой ступени с
 const LESSON_SIZE = 6;                          // слов в одном уроке на пути
 const UNIT_COLORS = ['green', 'purple', 'blue', 'orange', 'pink', 'teal'];
 const MINE = { id: 'mine', name: 'Мои слова' };
+const OLD = { id: 'old', name: 'Со старого сайта' };
 const OLD_SITE = 'https://den-english-10000.tivishka.chatgpt.site/';
 
 // ---------- утилиты ----------
@@ -90,7 +91,7 @@ function indexLang(lang = S.lang) {
   const custom = (LP(lang).custom || []).map((c) => ({ ...c, custom: true, audio: false, cat: c.cat || 'mine', lvl: c.lvl || '' }));
   db.words = [...custom, ...db.base];
   db.byId = new Map(db.words.map((w) => [w.id, w]));
-  db.catMap = new Map([...db.cats, MINE].map((c) => [c.id, c]));
+  db.catMap = new Map([...db.cats, MINE, OLD].map((c) => [c.id, c]));
   db.path = null;
 }
 const W = (id) => D()?.byId.get(id);
@@ -120,7 +121,7 @@ function buildPath() {
   const sections = [];
   let colorIdx = 0;
   const unit = (title, ids, cat) => ({ title, cat, lessons: chunk(ids), color: UNIT_COLORS[colorIdx++ % UNIT_COLORS.length] });
-  const custom = db.words.filter((w) => w.custom).map((w) => w.id);
+  const custom = db.words.filter((w) => w.custom && w.cat !== 'old').map((w) => w.id);
   if (custom.length) sections.push({ id: 'mine', title: 'Мои слова', sub: 'Добавлены тобой', units: [unit('Мои слова', custom, 'mine')] });
   for (const lv of LANGS[S.lang].levels) {
     const units = [], small = [];
@@ -792,7 +793,7 @@ function listHTML() {
 function renderWords(arg) {
   if (arg && D().catMap.has(arg)) { wv.cat = arg; history.replaceState(null, '', '#/words'); }
   const c = counts();
-  const cats = [['', 'Все темы'], ...[...D().cats, MINE].filter((x) => D().words.some((w) => w.cat === x.id)).map((x) => [x.id, x.name])];
+  const cats = [['', 'Все темы'], ...[...D().cats, MINE, OLD].filter((x) => D().words.some((w) => w.cat === x.id)).map((x) => [x.id, x.name])];
   return `
     <header class="page-head"><h1>Словарь</h1><button class="btn btn-blue btn-sm" data-act="add-word">${IC.plus}<span>Своё слово</span></button></header>
     <div class="dict-stats">
@@ -1100,9 +1101,15 @@ async function applyBundledImport(lang) {
     S.lang = lang;
     for (const item of list) {
       const id = index.get(String(item.w).toLowerCase());
-      if (id && status(id) !== 'learned') { markKnown(id); n++; }
+      if (id) { if (status(id) !== 'learned') { markKnown(id); n++; } continue; }
+      if (!item.t) continue;
+      // слова, которых нет в словаре, — отдельной темой «Со старого сайта»
+      const cid = 'o' + String(item.w).toLowerCase().replace(/[^a-z]+/g, '-');
+      if (!lp.custom.some((c) => c.id === cid)) lp.custom.push({ id: cid, w: item.w, t: item.t, ex: '', exr: '', cat: 'old', ipa: '', pos: '', lvl: '' });
+      markKnown(cid); n++;
     }
     S.lang = prev;
+    indexLang(lang);
     lp.importedOld = { at: today(), n };
     save();
     if (n) setTimeout(() => toast(`Перенёс ${words(n)} со старого сайта`), 600);
