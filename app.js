@@ -163,17 +163,18 @@ function introduce(id) {
   const r = rec(id, true);
   if (!r.s) { r.s = 1; r.due = today() + 1; r.first = today(); dayStat().n++; }
 }
-function grade(id, ok) {
+// force — режим «Закрепить»: верный ответ сразу поднимает ступень, ошибка откатывает на одну
+function grade(id, ok, force = false) {
   const r = rec(id, true), t = today();
   r.n = (r.n || 0) + 1;
   if (!r.s) { if (ok) introduce(id); return; }
   dayStat().r++;
   if (ok) {
     r.ok = (r.ok || 0) + 1;
-    if (r.due <= t) { r.s = Math.min(INTERVALS.length - 1, r.s + 1); r.due = t + jitter(INTERVALS[r.s]); }
+    if (r.due <= t || force) { r.s = Math.min(INTERVALS.length - 1, r.s + 1); r.due = t + jitter(INTERVALS[r.s]); }
   } else {
     r.bad = (r.bad || 0) + 1;
-    r.s = Math.max(1, r.s - 2);
+    r.s = Math.max(1, r.s - (force ? 1 : 2));
     r.due = t + 1;
   }
   if (r.s >= LEARNED && !r.la) r.la = t;
@@ -503,9 +504,43 @@ function levelCard(key, title, tag, list, color) {
     <div class="lc-foot"><span>${done} из ${c.total}</span><span class="lc-go">${c.new ? 'Учить' : 'Повторить'}${IC.chevron}</span></div>
   </button>`;
 }
+// ---------- закрепление ----------
+// изучаю = ступени 1–3; три верных ответа в «Закрепить» → ступень 4 = изучено
+const learningWords = () => D().words.filter((w) => status(w.id) === 'learning');
+const strength = (id) => clamp((rec(id)?.s || 1) - 1, 0, 3);
+const dots = (id) => { const n = strength(id); return `<span class="dots">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; };
+function consolidateType(id) {
+  const n = strength(id);
+  if (n >= 2) return 'type';                       // последний шаг — вспомнить и написать самому
+  return pick(n === 1 ? ['reverse', 'listen', 'type'] : ['choice', 'reverse', 'listen']);
+}
+function startConsolidate(pool) {
+  const list = (pool || learningWords().map((w) => w.id)).filter((id) => status(id) === 'learning');
+  if (!list.length) return toast('Нечего закреплять — все слова уже изучены');
+  const t = today(), all = LP().words;
+  // сначала те, что пора повторить, потом самые близкие к закреплению
+  const ids = shuffle(list.slice()).sort((a, b) => (all[a].due <= t ? 0 : 1) - (all[b].due <= t ? 0 : 1) || strength(b) - strength(a)).slice(0, 12);
+  lesson = { back: location.hash && location.hash !== '#/lesson' ? location.hash : '#/learn', consolidate: true, steps: shuffle(ids.map((id) => ({ t: consolidateType(id), id }))), i: 0, newIds: [], graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  go('#/lesson');
+}
+function consolidateCard() {
+  const list = learningWords();
+  if (!list.length) return '';
+  const steps = list.reduce((a, w) => a + strength(w.id), 0), almost = list.filter((w) => strength(w.id) === 2).length;
+  const preview = list.slice().sort((a, b) => strength(b.id) - strength(a.id)).slice(0, 8);
+  return `<section class="panel consolidate">
+    <div class="cs-head"><div><h3>Закрепить</h3><small>${words(list.length)} в процессе${almost ? ` · ${almost} почти готовы` : ''}</small></div><b class="cs-num">${list.length}</b></div>
+    <div class="pbar"><i style="width:${(steps / (list.length * 3)) * 100}%"></i><span>${steps} / ${list.length * 3} шагов</span></div>
+    <div class="cs-words">${preview.map((w) => `<span class="cs-word">${esc(w.w)}${dots(w.id)}</span>`).join('')}${list.length > preview.length ? `<span class="cs-more">+${list.length - preview.length}</span>` : ''}</div>
+    <p class="cs-hint">Каждое слово нужно правильно вспомнить 3 раза — в последний раз написать самому. Потом оно уходит в изученные.</p>
+    <button class="btn btn-orange btn-wide" data-act="consolidate">Закрепить</button>
+  </section>`;
+}
+
 function renderLearn() {
   const custom = levelWords('mine'), due = dueIds().length;
   return `<div class="mobile-only">${statsBar()}${dailyCard()}</div>
+    ${consolidateCard()}
     <h2 class="h2 first">Сложность</h2>
     <p class="lead">Выбери уровень — я наберу случайные новые слова.</p>
     <div class="level-grid">
@@ -724,7 +759,14 @@ function answer(ok, extra = {}) {
   }
   if (!lesson.graded.has(id)) {
     lesson.graded.add(id);
-    if (!lesson.newIds.includes(id)) grade(id, ok);
+    if (!lesson.newIds.includes(id)) {
+      const was = status(id);
+      grade(id, ok, lesson.consolidate);
+      if (lesson.consolidate && ok && was !== 'learned' && status(id) === 'learned') {
+        lesson.mastered = (lesson.mastered || 0) + 1;
+        lesson.answered.note = 'Закреплено! Слово ушло в изученные';
+      }
+    }
   }
   save();
   sfx(ok ? 'ok' : 'bad');
@@ -776,7 +818,7 @@ function startPhraseLesson(fresh, review, back = '#/phrases') {
   }
   for (const id of review) later.push({ t: pick(['pbuild', 'pbuild', 'preverse']), id, phrase: true });
   steps.push(...shuffle(later));
-  lesson = { back, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  lesson = { back, consolidate: !fresh.length, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
 }
 function learnPhrases(list, back) {
@@ -899,7 +941,7 @@ function startVerbLesson(fresh, review) {
   }
   for (const id of review) later.push({ t: 'vforms', id, verb: true });
   steps.push(...shuffle(later));
-  lesson = { back: '#/verbs', steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  lesson = { back: '#/verbs', consolidate: !fresh.length, steps, i: 0, newIds: fresh.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
 }
 function verbIntroView(w) {
@@ -999,9 +1041,9 @@ function renderLessonEnd() {
     <main class="lesson-end">
       <div class="end-hero">${cat(acc >= 70 ? 'happy' : 'idle', 150)}</div>
       <h1>${acc >= 90 ? 'Урок пройден идеально!' : acc >= 70 ? 'Урок пройден!' : 'Хорошая тренировка!'}</h1>
-      <p class="end-sub">Сегодня выучено: ${words(dayStat().n)}</p>
+      <p class="end-sub">${lesson.consolidate ? `Осталось закрепить: ${words(learningWords().length)}` : `Сегодня выучено: ${words(dayStat().n)}`}</p>
       <div class="end-stats">
-        <div class="end-stat yellow"><small>Новых слов</small><b>+${learnedNow}</b></div>
+        ${lesson.consolidate ? `<div class="end-stat yellow"><small>Закреплено</small><b>+${lesson.mastered || 0}</b></div>` : `<div class="end-stat yellow"><small>Новых слов</small><b>+${learnedNow}</b></div>`}
         <div class="end-stat green"><small>${acc >= 90 ? 'Отлично' : 'Точность'}</small><b>${IC.check}${acc}%</b></div>
         <div class="end-stat blue"><small>Время</small><b>${time}</b></div>
       </div>
@@ -1029,7 +1071,7 @@ function wordRow(w) {
   return `<div class="word-row" data-act="word" data-id="${esc(w.id)}">
     ${say(w.id, 'say-sm')}
     <div class="wr-main"><b>${esc(w.w)}${r?.st ? ' <span class="star-on">★</span>' : ''}</b><span>${esc(w.t)}</span></div>
-    <span class="st-pill st-${st}">${STATUS_NAME[st]}</span>
+    ${st === 'learning' ? dots(w.id) : `<span class="st-pill st-${st}">${STATUS_NAME[st]}</span>`}
   </div>`;
 }
 function listHTML() {
@@ -1445,6 +1487,7 @@ const actions = {
   'say-ex': (el) => speak(anyWord(el.dataset.id), true),
   'say-slow': (el) => { const s = S.settings.slow; S.settings.slow = true; speak(anyWord(el.dataset.id)); S.settings.slow = s; },
   'learn-main': learnMain,
+  consolidate: () => startConsolidate(),
   'learn-level': (el) => learnFrom(levelWords(el.dataset.lv)),
   'cat-learn': (el) => learnFrom(D().words.filter((w) => w.cat === el.dataset.cat)),
   'cat-quiz': (el) => {
@@ -1455,6 +1498,7 @@ const actions = {
   'deck-quiz': (el) => {
     const ids = deckIds(el.dataset.deck);
     if (el.dataset.deck === 'phrases') return startPhraseLesson([], shuffle(ids).slice(0, 10), '#/review');
+    if (el.dataset.deck === 'learning') return startConsolidate(ids);
     startLesson({ reviewIds: shuffle(el.dataset.deck === 'hard' ? ids.slice(0, 15) : ids.slice()).slice(0, 15), practice: true });
   },
   'deck-cards': (el) => startCards(deckIds(el.dataset.deck), el.dataset.deck === 'sift' ? 'sift' : 'deck'),
