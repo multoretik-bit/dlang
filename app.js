@@ -18,7 +18,7 @@ const LEVEL_INFO = {
 const GOALS = [[5, 'Легко'], [10, 'Нормально'], [15, 'Серьёзно'], [20, 'Интенсивно'], [30, 'Марафон']];
 const INTERVALS = [0, 1, 2, 4, 8, 16, 35, 90]; // дни до повторения на каждой ступени
 const LEARNED = 4;                              // с этой ступени слово «изучено»
-const LESSON_SIZE = 6;                          // слов в одном уроке на пути
+const LESSON_SIZE = 6;                          // новых слов в одном уроке
 const UNIT_COLORS = ['green', 'purple', 'blue', 'orange', 'pink', 'teal'];
 const MINE = { id: 'mine', name: 'Мои слова' };
 const OLD = { id: 'old', name: 'Со старого сайта' };
@@ -109,49 +109,30 @@ function counts(list = D().words) {
   return c;
 }
 
-// ---------- путь: уровни → блоки по темам → уроки по 6 слов ----------
-function chunk(ids) {
-  const n = Math.max(1, Math.ceil(ids.length / LESSON_SIZE)), size = Math.ceil(ids.length / n), out = [];
-  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
-  return out;
+// ---------- уровни сложности ----------
+const LEVEL_NAME = { A1: 'Лёгкие', A2: 'Средние', B1: 'Сложные', B2: 'Очень сложные' };
+const LEVEL_COLOR = { A1: 'green', A2: 'blue', B1: 'purple', B2: 'orange' };
+const levelWords = (lv) => (lv === 'mine' ? D().words.filter((w) => w.custom && w.cat !== 'old') : D().base.filter((w) => w.lvl === lv));
+const freshOf = (list) => list.filter((w) => status(w.id) === 'new').map((w) => w.id);
+// уровень для главной кнопки: свой, а если в нём всё выучено — следующие по кругу
+function mainLevel() {
+  const lv = LANGS[S.lang].levels, start = Math.max(0, lv.indexOf(LP().level));
+  return [...lv.slice(start), ...lv.slice(0, start)].find((l) => freshOf(levelWords(l)).length) || null;
 }
-function buildPath() {
-  const db = D();
-  if (db.path) return db.path;
-  const sections = [];
-  let colorIdx = 0;
-  const unit = (title, ids, cat) => ({ title, cat, lessons: chunk(ids), color: UNIT_COLORS[colorIdx++ % UNIT_COLORS.length] });
-  const custom = db.words.filter((w) => w.custom && w.cat !== 'old').map((w) => w.id);
-  if (custom.length) sections.push({ id: 'mine', title: 'Мои слова', sub: 'Добавлены тобой', units: [unit('Мои слова', custom, 'mine')] });
-  for (const lv of LANGS[S.lang].levels) {
-    const units = [], small = [];
-    for (const c of db.cats) {
-      const ids = db.base.filter((w) => w.lvl === lv && w.cat === c.id).map((w) => w.id);
-      if (ids.length >= 5) units.push(unit(c.name, ids, c.id));
-      else small.push(...ids);
-    }
-    if (small.length) units.push(unit('Разные слова', small, null));
-    if (units.length) sections.push({ id: lv, title: `Уровень ${lv}`, sub: LEVEL_INFO[lv][0], units });
-  }
-  const nodes = [];
-  sections.forEach((sec, si) => sec.units.forEach((u, ui) => u.lessons.forEach((ids, li) => {
-    const node = { key: `${si}-${ui}-${li}`, si, ui, li, ids, unit: u, section: sec };
-    nodes.push(node);
-  })));
-  db.path = { sections, nodes };
-  return db.path;
+// урок из случайных новых слов списка; если новых нет — прогон уже выученных
+function learnFrom(list) {
+  const fresh = shuffle(freshOf(list)).slice(0, LESSON_SIZE);
+  if (fresh.length) return startLesson({ newIds: fresh, reviewIds: shuffle(dueIds()).slice(0, 4) });
+  if (!list.length) return toast('Здесь пока нет слов');
+  toast('Новых слов здесь не осталось — повторим выученные');
+  startLesson({ reviewIds: shuffle(list.map((w) => w.id)).slice(0, 15), practice: true });
 }
-function nodeState(node) {
-  let fresh = 0;
-  for (const id of node.ids) if (status(id) === 'new') fresh++;
-  return fresh === 0 ? 'done' : fresh < node.ids.length ? 'started' : 'todo';
-}
-function currentNode() {
-  const { sections, nodes } = buildPath();
-  const start = Math.max(0, sections.findIndex((s) => s.id === LP().level));
-  const mine = nodes.filter((n) => n.section.id === 'mine');
-  const order = [...mine, ...nodes.filter((n) => n.section.id !== 'mine' && n.si >= start), ...nodes.filter((n) => n.section.id !== 'mine' && n.si < start)];
-  return order.find((n) => nodeState(n) !== 'done') || null;
+function learnMain() {
+  const mine = levelWords('mine');
+  if (freshOf(mine).length) return learnFrom(mine); // свои слова — в первую очередь
+  const lv = mainLevel();
+  if (lv) learnFrom(levelWords(lv));
+  else toast('Все слова выучены!');
 }
 function dueIds() {
   const t = today(), all = LP().words, out = [];
@@ -318,6 +299,7 @@ const IC = {
 };
 // цветные иконки меню и статистики
 const ICON = {
+  get review() { return ICON.repeat; },
   learn: '<svg viewBox="0 0 32 32"><path d="M5 14.5 16 5l11 9.5V27a1.5 1.5 0 0 1-1.5 1.5h-19A1.5 1.5 0 0 1 5 27z" fill="#ffc800"/><path d="M3 15.5 16 4l13 11.5" fill="none" stroke="#ff4b4b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="12.5" y="18" width="7" height="10.5" rx="1.5" fill="#e5a000"/></svg>',
   words: '<svg viewBox="0 0 32 32"><path d="M5 6.5A2.5 2.5 0 0 1 7.5 4H26v21H7.5A2.5 2.5 0 0 0 5 27.5z" fill="#1cb0f6"/><path d="M5 27.5A2.5 2.5 0 0 1 7.5 25H26v3.5H7.5A2.5 2.5 0 0 1 5 27.5z" fill="#ddf4ff"/><path d="M11 10h10M11 14.5h7" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
   cards: '<svg viewBox="0 0 32 32"><rect x="11" y="3.5" width="16" height="21" rx="3.5" fill="#ce82ff" transform="rotate(8 19 14)"/><rect x="5" y="7" width="16" height="21" rx="3.5" fill="#58cc02"/><path d="M10 15.5l2.5 2.5 5-5.5" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -328,6 +310,7 @@ const ICON = {
   book: '<svg viewBox="0 0 32 32"><path d="M4 7c4-2 8-2 12 1 4-3 8-3 12-1v19c-4-2-8-2-12 1-4-3-8-3-12-1z" fill="#58cc02"/><path d="M16 8v19" stroke="#58a700" stroke-width="2"/></svg>',
   target: '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#ff4b4b"/><circle cx="16" cy="16" r="8.5" fill="#fff"/><circle cx="16" cy="16" r="4.5" fill="#ff4b4b"/></svg>',
   repeat: '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#1cb0f6"/><path d="M10 14.5a6.5 6.5 0 0 1 11.5-3.5M22 17.5a6.5 6.5 0 0 1-11.5 3.5" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/><path d="m21.5 7.5.3 4-4 .2M10.5 24.5l-.3-4 4-.2" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  cats: '<svg viewBox="0 0 32 32"><rect x="4" y="4" width="11" height="11" rx="3" fill="#ff4b4b"/><rect x="17" y="4" width="11" height="11" rx="3" fill="#ffc800"/><rect x="4" y="17" width="11" height="11" rx="3" fill="#1cb0f6"/><rect x="17" y="17" width="11" height="11" rx="3" fill="#58cc02"/></svg>',
   chest: '<svg viewBox="0 0 32 32"><rect x="4" y="12" width="24" height="15" rx="3" fill="#ff9600"/><path d="M4 15a10 7 0 0 1 24 0v-1a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3z" fill="#ffc800"/><path d="M4 14a3 3 0 0 1 3-3h18a3 3 0 0 1 3 3v3H4z" fill="#ffc800"/><rect x="13" y="15" width="6" height="7" rx="1.5" fill="#fff"/></svg>',
 };
 
@@ -365,7 +348,7 @@ const POS_RU = { n: 'сущ.', v: 'глаг.', adj: 'прил.', adv: 'наре�
 // ---------- роутинг и каркас ----------
 const route = () => (location.hash.replace(/^#\/?/, '') || 'learn').split('/');
 const go = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
-window.addEventListener('hashchange', () => { closeSheet(); popNode = null; render(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { closeSheet(); render(); window.scrollTo(0, 0); });
 
 const app = $('#app');
 let busy = false;
@@ -385,8 +368,8 @@ async function render() {
   }
   const [page, arg] = route();
   if (page === 'lesson') return lesson ? renderLesson() : go('#/learn');
-  if (page === 'cards' && cards) return renderCardSession();
-  const views = { learn: renderLearn, words: () => renderWords(arg), cards: renderCards, profile: renderProfile };
+  if (page === 'cards') return cards ? renderCardSession() : go('#/review');
+  const views = { learn: renderLearn, cats: () => renderCats(arg), review: renderReview, words: () => renderWords(arg), profile: renderProfile };
   const name = views[page] ? page : 'learn';
   app.innerHTML = `
     <div class="shell">
@@ -398,7 +381,7 @@ async function render() {
   afterRender[name]?.();
 }
 const afterRender = {};
-const NAV = [['learn', 'Учить'], ['words', 'Словарь'], ['cards', 'Карточки'], ['profile', 'Профиль']];
+const NAV = [['learn', 'Учить'], ['cats', 'Категории'], ['review', 'Повторение'], ['words', 'Словарь'], ['profile', 'Профиль']];
 function sidebar(page) {
   return `<nav class="sidebar">
     <a class="logo" href="#/learn">dLang</a>
@@ -406,7 +389,7 @@ function sidebar(page) {
   </nav>`;
 }
 function tabbar(page) {
-  return `<nav class="tabbar">${NAV.map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}" aria-label="${label}">${ICON[id]}</a>`).join('')}</nav>`;
+  return `<nav class="tabbar">${NAV.map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}</nav>`;
 }
 // «Выучено» — все слова, которые уже пройдены (изучаю + изучено), «осталось» — ещё не тронутые.
 function statsBar() {
@@ -461,12 +444,9 @@ function renderOnboarding() {
     </main>`;
 }
 
-// ---------- главная: путь ----------
-let popNode = null;
-let openSection = null;
-
+// ---------- учить: карточки сложности ----------
 function dailyCard() {
-  const lp = LP(), done = dayStat().n, goal = lp.daily, due = dueIds().length, node = currentNode();
+  const lp = LP(), done = dayStat().n, goal = lp.daily, due = dueIds().length, lv = mainLevel();
   const pct = clamp(done / goal, 0, 1) * 100;
   return `<section class="panel daily">
     <div class="daily-head">${cat(done >= goal ? 'happy' : 'idle', 58)}
@@ -474,9 +454,10 @@ function dailyCard() {
         <div class="pbar ${done >= goal ? 'gold' : ''}"><i style="width:${pct}%"></i><span>${done} / ${goal}</span></div></div>
     </div>
     <div class="daily-actions">
-      ${node ? `<button class="btn btn-green btn-wide" data-act="start-current">${done ? 'Продолжить' : 'Начать урок'}</button>` : ''}
-      ${due ? `<button class="btn btn-blue-ghost btn-wide" data-act="review">Повторить · ${due}</button>` : ''}
+      ${lv || freshOf(levelWords('mine')).length ? `<button class="btn btn-green btn-wide" data-act="learn-main">${done ? 'Ещё новые слова' : 'Учить новые слова'}</button>` : ''}
+      ${due ? `<button class="btn btn-blue-ghost btn-wide" data-act="deck-quiz" data-deck="due">Повторить · ${due}</button>` : ''}
     </div>
+    ${lv ? `<p class="daily-note">Случайные слова: ${LEVEL_NAME[lv].toLowerCase()} · ${lv}</p>` : ''}
   </section>`;
 }
 function questsCard() {
@@ -490,66 +471,63 @@ function questsCard() {
       <div class="pbar sm ${ok ? 'gold' : ''}"><i style="width:${clamp(v / max, 0, 1) * 100}%"></i><span>${Math.min(v, max)} / ${max}</span></div></div>${ok ? ICON.chest : ''}</div>`; }).join('')}
   </section>`;
 }
-
+function levelCard(key, title, tag, list, color) {
+  const c = counts(list), done = c.learned + c.learning;
+  return `<button class="level-card u-${color}" data-act="learn-level" data-lv="${key}">
+    <div class="lc-head"><span class="lc-tag">${tag}</span>${key === LP().level ? '<span class="lc-mine">мой уровень</span>' : ''}</div>
+    <h3>${title}</h3>
+    <div class="lc-bar"><i style="width:${c.total ? (done / c.total) * 100 : 0}%"></i></div>
+    <div class="lc-foot"><span>${done} из ${c.total}</span><span class="lc-go">${c.new ? 'Учить' : 'Повторить'}${IC.chevron}</span></div>
+  </button>`;
+}
 function renderLearn() {
-  const { sections, nodes } = buildPath();
-  const cur = currentNode();
-  if (openSection == null) openSection = cur ? cur.si : Math.max(0, sections.findIndex((s) => s.id === LP().level));
-  const OFFS = [0, 44, 70, 44, 0, -44, -70, -44];
-  const body = sections.map((sec, si) => {
-    const secNodes = nodes.filter((n) => n.si === si);
-    const doneN = secNodes.filter((n) => nodeState(n) === 'done').length;
-    if (si !== openSection) {
-      return `<button class="section-card" data-act="open-section" data-si="${si}">
-        <div><small>${esc(sec.sub)}</small><b>${esc(sec.title)}</b>
-        <div class="pbar sm"><i style="width:${(doneN / secNodes.length) * 100}%"></i><span>${doneN} / ${secNodes.length}</span></div></div>
-        <span class="section-go">${IC.chevron}</span></button>`;
-    }
-    let k = 0;
-    const units = sec.units.map((u, ui) => {
-      const lessons = u.lessons.map((ids, li) => {
-        const node = secNodes.find((n) => n.ui === ui && n.li === li);
-        const st = nodeState(node), isCur = cur && cur.key === node.key;
-        const off = OFFS[k++ % OFFS.length];
-        const fresh = node.ids.filter((id) => status(id) !== 'new').length;
-        const icon = st === 'done' ? IC.check : isCur ? IC.star : u.cat === 'mine' ? IC.pencil : li === u.lessons.length - 1 && u.lessons.length > 1 ? IC.dumbbell : IC.star;
-        return `<div class="node-wrap ${isCur ? 'cur-wrap' : ''} ${popNode === node.key ? 'pop-wrap' : ''}" style="--x:${off}px">
-          ${isCur && popNode !== node.key ? '<div class="node-tip">Начать</div>' : ''}
-          <button class="node st-${st} ${isCur ? 'cur' : ''}" data-act="node" data-key="${node.key}" aria-label="Урок ${li + 1}">
-            ${isCur ? `<svg class="node-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><circle cx="50" cy="50" r="46" class="fg" stroke-dasharray="289" stroke-dashoffset="${289 * (1 - fresh / node.ids.length)}"/></svg>` : ''}
-            <span class="node-face">${icon}</span>
-          </button>
-          ${popNode === node.key ? nodePop(node, st) : ''}
-        </div>`;
-      }).join('');
-      return `<section class="unit u-${u.color}">
-        <header class="unit-banner">
-          <div><small>${esc(sec.id === 'mine' ? 'Свои слова' : `${sec.id} · Блок ${ui + 1}`)}</small><h2>${esc(u.title)}</h2></div>
-          ${u.cat ? `<button class="unit-btn" data-act="cards-cat" data-cat="${esc(u.cat)}" data-lv="${esc(sec.id)}" aria-label="Карточки">${IC.cards}<span>Карточки</span></button>` : ''}
-        </header>
-        <div class="unit-path">${lessons}<div class="unit-cat ${ui % 2 ? 'left' : 'right'}">${cat(['idle', 'think', 'happy'][ui % 3], 92)}</div></div>
-      </section>`;
-    }).join('');
-    return `<div class="section-open">
-      <button class="section-head" data-act="open-section" data-si="-1"><small>${esc(sec.sub)}</small><b>${esc(sec.title)}</b><span>${doneN} / ${secNodes.length}</span></button>
-      ${units}</div>`;
-  }).join('');
-  return `<div class="mobile-only">${statsBar()}${dailyCard()}</div><div class="path">${body}</div>`;
+  const custom = levelWords('mine'), due = dueIds().length;
+  return `<div class="mobile-only">${statsBar()}${dailyCard()}</div>
+    <h2 class="h2 first">Сложность</h2>
+    <p class="lead">Выбери уровень — я наберу случайные новые слова.</p>
+    <div class="level-grid">
+      ${LANGS[S.lang].levels.map((lv) => levelCard(lv, LEVEL_NAME[lv], lv, levelWords(lv), LEVEL_COLOR[lv])).join('')}
+      ${custom.length ? levelCard('mine', 'Мои слова', 'свои', custom, 'pink') : ''}
+    </div>
+    <div class="quick-row">
+      <a class="quick" href="#/cats">${ICON.cats}<span><b>Категории</b><small>Учи слова по темам</small></span></a>
+      <a class="quick" href="#/review">${ICON.repeat}<span><b>Повторение</b><small>${due ? `${words(due)} пора повторить` : 'Прогони старые слова'}</small></span></a>
+    </div>`;
 }
-function nodePop(node, st) {
-  const u = node.unit;
-  const preview = node.ids.map((id) => { const w = W(id); return `<span class="pop-word ${status(id) !== 'new' ? 'known' : ''}">${esc(w.w)}</span>`; }).join('');
-  return `<div class="node-pop u-${u.color}">
-    <b>${esc(u.title)}</b><small>Урок ${node.li + 1} из ${u.lessons.length}</small>
-    <div class="pop-words">${preview}</div>
-    <button class="btn btn-white btn-wide" data-act="start-node" data-key="${node.key}">${st === 'done' ? 'Повторить +5 очков' : st === 'started' ? 'Продолжить' : 'Начать +15 очков'}</button>
-  </div>`;
+
+// ---------- категории ----------
+function catList() {
+  const db = D();
+  return [...db.cats, MINE, OLD].map((c) => [c, db.words.filter((w) => w.cat === c.id)]).filter(([, ws]) => ws.length);
 }
-afterRender.learn = () => {
-  const el = popNode ? $('.node-pop') : $('.node.cur');
-  if (el && !afterRender.scrolled) { el.scrollIntoView({ block: 'center' }); afterRender.scrolled = true; }
-  else if (popNode && el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-};
+const catColor = (id) => UNIT_COLORS[Math.max(0, catList().findIndex(([c]) => c.id === id)) % UNIT_COLORS.length];
+function renderCats(arg) {
+  if (arg && D().catMap.has(arg)) return renderCat(arg);
+  return `<header class="page-head"><h1>Категории</h1></header>
+    <div class="cat-grid">${catList().map(([c, ws], i) => {
+      const cn = counts(ws), done = cn.learned + cn.learning, pct = Math.round((done / cn.total) * 100);
+      return `<a class="cat-tile u-${UNIT_COLORS[i % UNIT_COLORS.length]}" href="#/cats/${c.id}">
+        <span class="ct-ring" style="--p:${pct}"><b>${pct}%</b></span>
+        <span class="ct-txt"><b>${esc(c.name)}</b><small>${done} из ${cn.total}</small></span>
+      </a>`;
+    }).join('')}</div>`;
+}
+function renderCat(id) {
+  const c = D().catMap.get(id), list = D().words.filter((w) => w.cat === id), cn = counts(list), done = cn.learned + cn.learning;
+  const sorted = list.slice().sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
+  return `<header class="page-head"><a class="icon-btn" href="#/cats" aria-label="Назад">${IC.back}</a><h1 class="grow">${esc(c.name)}</h1></header>
+    <section class="cat-hero u-${catColor(id)}">
+      <div class="ch-nums"><b>${done}</b><span>из ${words(cn.total)} выучено</span></div>
+      <div class="lc-bar"><i style="width:${(done / cn.total) * 100}%"></i></div>
+      <div class="ch-actions">
+        <button class="btn btn-white" data-act="cat-learn" data-cat="${esc(id)}" ${cn.new ? '' : 'disabled'}>Учить новые</button>
+        <button class="btn btn-white" data-act="cat-quiz" data-cat="${esc(id)}" ${done ? '' : 'disabled'}>Квиз по выученным</button>
+        <button class="btn btn-white" data-act="cat-cards" data-cat="${esc(id)}">Карточки</button>
+      </div>
+    </section>
+    <p class="list-count">${words(cn.total)}</p>
+    <div class="word-list">${sorted.map(wordRow).join('')}</div>`;
+}
 
 // ---------- занятие ----------
 let lesson = null;
@@ -565,14 +543,8 @@ function startLesson({ newIds = [], reviewIds = [], practice = false } = {}) {
   steps.push(...shuffle(later));
   const matchIds = newIds.length >= 3 ? newIds : practice && reviewIds.length >= 3 ? shuffle(reviewIds.slice()).slice(0, 5) : [];
   if (new Set(matchIds.map((id) => norm(W(id).t))).size >= 3) steps.push({ t: 'match', ids: matchIds.slice(0, 6) });
-  lesson = { steps, i: 0, newIds: newIds.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
+  lesson = { back: location.hash && location.hash !== '#/lesson' ? location.hash : '#/learn', steps, i: 0, newIds: newIds.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
-}
-function startNode(node) {
-  const fresh = node.ids.filter((id) => status(id) === 'new');
-  const extra = shuffle(dueIds().filter((id) => !node.ids.includes(id))).slice(0, 4);
-  if (fresh.length) startLesson({ newIds: fresh, reviewIds: [...node.ids.filter((id) => !fresh.includes(id)), ...extra] });
-  else startLesson({ reviewIds: node.ids.slice(), practice: true });
 }
 function reviewType(id) {
   const s = rec(id)?.s || 1;
@@ -815,37 +787,46 @@ afterRender.words = () => {
   input?.addEventListener('input', () => { wv.q = input.value; wv.limit = 120; $('#wlist').innerHTML = listHTML(); });
 };
 
-// ---------- карточки ----------
+// ---------- повторение и карточки ----------
 let cards = null;
 let cardDir = 'front';
-function cardSets() {
-  const db = D(), all = LP().words;
-  const by = (fn) => db.words.filter(fn).map((w) => w.id);
-  const node = currentNode();
+function reviewDecks() {
+  const all = LP().words, t = today(), main = mainLevel();
+  const by = (fn) => D().words.filter(fn).map((w) => w.id);
   return [
-    ['due', ICON.repeat, 'Повторить сегодня', 'Слова, которые пора освежить', dueIds()],
-    ['next', ICON.book, 'Следующий урок', 'Посмотри слова заранее', node ? node.ids.slice() : []],
-    ['learning', ICON.words, 'Изучаю', 'Слова в процессе', by((w) => status(w.id) === 'learning')],
-    ['learned', ICON.chest, 'Изучено', 'Проверь, что не забыл', by((w) => status(w.id) === 'learned')],
+    ['learned', ICON.book, 'Все выученные', 'Случайные слова из всего, что знаешь', by((w) => status(w.id) !== 'new')],
+    ['hard', ICON.target, 'Трудные слова', 'Где ты ошибался чаще всего', by((w) => (all[w.id]?.bad || 0) > 0).sort((a, b) => all[b].bad - all[a].bad)],
+    ['recent', ICON.words, 'Недавно выученные', 'За последние 7 дней', by((w) => (all[w.id]?.first ?? -99) >= t - 7)],
+    ['learning', ICON.repeat, 'Ещё не закрепились', 'Слова в процессе изучения', by((w) => status(w.id) === 'learning')],
     ['star', ICON.cards, 'Избранное', 'Слова со звёздочкой', by((w) => all[w.id]?.st)],
-    ['sift', ICON.target, 'Что я уже знаю?', 'Свайп вправо — слово уйдёт из уроков', by((w) => status(w.id) === 'new' && !w.custom).slice(0, 40)],
+    ['sift', ICON.cats, 'Проверь новые слова', 'Знаешь — свайп вправо, и слово не попадёт в уроки', main ? shuffle(freshOf(levelWords(main))).slice(0, 30) : []],
   ];
 }
-function renderCards() {
-  return `
-    <header class="page-head"><h1>Карточки</h1>
-      <div class="seg2"><button class="${cardDir === 'front' ? 'on' : ''}" data-act="dir" data-dir="front">${S.lang.toUpperCase()} → RU</button><button class="${cardDir === 'back' ? 'on' : ''}" data-act="dir" data-dir="back">RU → ${S.lang.toUpperCase()}</button></div>
-    </header>
-    <div class="deck-list">${cardSets().map(([id, icon, name, sub, ids]) => `
-      <button class="deck ${ids.length ? '' : 'off'}" data-act="cards-set" data-set="${id}" ${ids.length ? '' : 'disabled'}>
-        <span class="deck-ic">${icon}</span><span class="deck-txt"><b>${name}</b><small>${sub}</small></span><span class="deck-n">${ids.length}</span>
-      </button>`).join('')}</div>
-    <p class="hint-line">Колоды по темам — кнопка «Карточки» на каждом блоке во вкладке «Учить».</p>`;
+const deckIds = (id) => (id === 'due' ? dueIds() : reviewDecks().find((d) => d[0] === id)?.[4] || []);
+const dirToggle = () => `<div class="seg2"><button class="${cardDir === 'front' ? 'on' : ''}" data-act="dir" data-dir="front">${S.lang.toUpperCase()} → RU</button><button class="${cardDir === 'back' ? 'on' : ''}" data-act="dir" data-dir="back">RU → ${S.lang.toUpperCase()}</button></div>`;
+function renderReview() {
+  const due = dueIds().length;
+  return `<header class="page-head"><h1>Повторение</h1>${dirToggle()}</header>
+    <section class="due-card">
+      ${cat(due ? 'think' : 'happy', 72)}
+      <div class="dc-txt"><b>${due ? `Пора повторить: ${words(due)}` : 'На сегодня всё повторено'}</b><small>${due ? 'Эти слова начинают забываться' : 'Можно прогнать старые слова ниже'}</small></div>
+      ${due ? `<div class="dc-actions"><button class="btn btn-green" data-act="deck-quiz" data-deck="due">Квиз</button><button class="btn btn-ghost" data-act="deck-cards" data-deck="due">Карточки</button></div>` : ''}
+    </section>
+    <h2 class="h2">Прогнать слова</h2>
+    <div class="deck-list">${reviewDecks().map(([id, icon, name, sub, ids]) => `
+      <div class="deck ${ids.length ? '' : 'off'}">
+        <span class="deck-ic">${icon}</span>
+        <span class="deck-txt"><b>${name} <span class="deck-n">${ids.length}</span></b><small>${sub}</small></span>
+        <span class="deck-btns">
+          ${id !== 'sift' ? `<button class="btn btn-sm btn-blue" data-act="deck-quiz" data-deck="${id}" ${ids.length ? '' : 'disabled'}>Квиз</button>` : ''}
+          <button class="btn btn-sm btn-ghost" data-act="deck-cards" data-deck="${id}" ${ids.length ? '' : 'disabled'}>Карточки</button>
+        </span>
+      </div>`).join('')}</div>`;
 }
-function startCards(ids, kind) {
+function startCards(ids, kind, back = '#/review') {
   if (!ids.length) return toast('Здесь пока нет слов');
   const list = kind === 'sift' ? ids.slice(0, 40) : shuffle(ids.slice()).slice(0, 30);
-  cards = { ids: list, i: 0, flipped: false, know: [], again: [], kind };
+  cards = { ids: list, i: 0, flipped: false, know: [], again: [], kind, back };
   go('#/cards');
 }
 function renderCardSession() {
@@ -972,7 +953,7 @@ function renderProfile() {
 
     <h2 class="h2">Настройки · ${LANGS[S.lang].name}</h2>
     <section class="box settings">
-      <div class="set-col"><span>Уровень — с него начинается путь</span>
+      <div class="set-col"><span>Мой уровень — для кнопки «Учить новые слова»</span>
         <div class="seg-row">${LANGS[S.lang].levels.map((lv) => `<button class="${lp.level === lv ? 'on' : ''}" data-act="set-level" data-level="${lv}">${lv}</button>`).join('')}</div></div>
       <div class="set-col"><span>Новых слов в день</span>
         <div class="seg-row">${GOALS.map(([n]) => `<button class="${lp.daily === n ? 'on' : ''}" data-act="set-daily" data-n="${n}">${n}</button>`).join('')}</div></div>
@@ -1178,12 +1159,10 @@ async function switchLang(lang) {
   closeSheet();
   if (!S.langs[lang]?.level) { ob.lang = lang; ob.step = 1; ob.sel = null; S.lang = lang; LP(lang); return renderOnboarding(); }
   S.lang = lang;
-  openSection = null; afterRender.scrolled = false;
   save();
   try { await loadLang(lang); } catch {}
   go('#/learn');
 }
-function findNode(key) { return buildPath().nodes.find((n) => n.key === key); }
 
 const actions = {
   'ob-pick': (el) => { ob.sel = el.dataset.v; renderOnboarding(); },
@@ -1197,7 +1176,6 @@ const actions = {
     lp.daily = +ob.sel;
     S.lang = ob.lang || S.lang;
     ob.step = 0; ob.sel = null;
-    openSection = null; afterRender.scrolled = false;
     save();
     go('#/learn');
   },
@@ -1205,11 +1183,19 @@ const actions = {
   say: (el) => speak(W(el.dataset.id)),
   'say-ex': (el) => speak(W(el.dataset.id), true),
   'say-slow': (el) => { const s = S.settings.slow; S.settings.slow = true; speak(W(el.dataset.id)); S.settings.slow = s; },
-  node: (el) => { popNode = popNode === el.dataset.key ? null : el.dataset.key; render(); },
-  'start-node': (el) => { const n = findNode(el.dataset.key); popNode = null; if (n) startNode(n); },
-  'start-current': () => { const n = currentNode(); if (n) startNode(n); },
-  review: () => startLesson({ reviewIds: shuffle(dueIds().slice(0, 60)).slice(0, 15), practice: true }),
-  'open-section': (el) => { openSection = +el.dataset.si; popNode = null; render(); if (openSection >= 0) $('.section-open')?.scrollIntoView({ block: 'start' }); },
+  'learn-main': learnMain,
+  'learn-level': (el) => learnFrom(levelWords(el.dataset.lv)),
+  'cat-learn': (el) => learnFrom(D().words.filter((w) => w.cat === el.dataset.cat)),
+  'cat-quiz': (el) => {
+    const ids = D().words.filter((w) => w.cat === el.dataset.cat && status(w.id) !== 'new').map((w) => w.id);
+    startLesson({ reviewIds: shuffle(ids).slice(0, 15), practice: true });
+  },
+  'cat-cards': (el) => startCards(D().words.filter((w) => w.cat === el.dataset.cat).map((w) => w.id), 'cat', `#/cats/${el.dataset.cat}`),
+  'deck-quiz': (el) => {
+    const ids = deckIds(el.dataset.deck);
+    startLesson({ reviewIds: shuffle(el.dataset.deck === 'hard' ? ids.slice(0, 15) : ids.slice()).slice(0, 15), practice: true });
+  },
+  'deck-cards': (el) => startCards(deckIds(el.dataset.deck), el.dataset.deck === 'sift' ? 'sift' : 'deck'),
   word: (el) => wordSheet(el.dataset.id),
   'add-word': () => wordForm(),
   'edit-word': (el) => wordForm(el.dataset.id),
@@ -1222,7 +1208,7 @@ const actions = {
   },
   'lang-sheet': langSheet,
   'switch-lang': (el) => switchLang(el.dataset.lang),
-  'set-level': (el) => { LP().level = el.dataset.level; openSection = null; afterRender.scrolled = false; save(); render(); },
+  'set-level': (el) => { LP().level = el.dataset.level; save(); render(); },
   'set-daily': (el) => { LP().daily = +el.dataset.n; save(); render(); },
   toggle: (el) => { S.settings[el.dataset.key] = !S.settings[el.dataset.key]; save(); render(); },
   'close-sheet': closeSheet,
@@ -1233,13 +1219,11 @@ const actions = {
   'cat-filter': (el) => { wv.cat = el.dataset.cat; wv.limit = 120; render(); },
   'more-rows': () => { wv.limit += 200; $('#wlist').innerHTML = listHTML(); },
   dir: (el) => { cardDir = el.dataset.dir; render(); },
-  'cards-set': (el) => { const s = cardSets().find((x) => x[0] === el.dataset.set); startCards(s[4], s[0]); },
-  'cards-cat': (el) => startCards(D().words.filter((w) => w.cat === el.dataset.cat && (!el.dataset.lv || el.dataset.lv === 'mine' || w.lvl === el.dataset.lv)).map((w) => w.id), 'cat'),
   'card-grade': (el) => gradeCard(el.dataset.ok === '1'),
-  'cards-again': () => startCards(cards.again, 'again'),
-  'cards-exit': () => { const back = cards?.kind === 'cat' ? '#/learn' : '#/cards'; cards = null; go(back); },
-  quit: () => { if (lesson.total && !confirm('Закончить урок? Пройденное сохранится.')) return; lesson = null; go('#/learn'); },
-  'end-next': () => { lesson = null; afterRender.scrolled = false; go('#/learn'); },
+  'cards-again': () => startCards(cards.again, cards.kind === 'sift' ? 'sift' : 'again', cards.back),
+  'cards-exit': () => { const back = cards?.back || '#/review'; cards = null; go(back); },
+  quit: () => { if (lesson.total && !confirm('Закончить урок? Пройденное сохранится.')) return; const back = lesson.back; lesson = null; go(back); },
+  'end-next': () => { const back = lesson.back; lesson = null; go(back); },
   'intro-next': () => { introduce(step().id); lesson.xp += 3; addXP(3); save(); nextStep(); },
   'intro-known': () => {
     const id = step().id;
@@ -1292,10 +1276,7 @@ const actions = {
 
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
-  if (!el) {
-    if (popNode && !e.target.closest('.node-pop')) { popNode = null; render(); }
-    return;
-  }
+  if (!el) return;
   const fn = actions[el.dataset.act];
   if (!fn) return;
   if (el.tagName === 'A') e.preventDefault();
@@ -1346,5 +1327,5 @@ document.addEventListener('keydown', (e) => {
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 window.speechSynthesis?.getVoices();
-window.dlang = { get state() { return S; }, get lesson() { return lesson; }, W: (id) => W(id), currentNode }; // для отладки из консоли
+window.dlang = { get state() { return S; }, get lesson() { return lesson; }, W: (id) => W(id), mainLevel }; // для отладки из консоли
 render();
