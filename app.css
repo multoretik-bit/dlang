@@ -291,6 +291,14 @@ svg.flag { width: 34px; height: 24px; flex: none; border-radius: 6px; }
 .md th { background: var(--bg-2); font-weight: 800; }
 .md tr:last-child td { border-bottom: 0; }
 .th-foot { display: grid; gap: 12px; margin: 26px 0 10px; }
+.th-group { font-size: 15px; color: var(--light); letter-spacing: 0.6px; text-transform: uppercase; margin: 16px 2px 2px; }
+.th-group:first-child { margin-top: 0; }
+.md-toggle { margin: 0 0 14px; border: 2px solid var(--border); border-radius: var(--r-sm); padding: 0 14px; }
+.md-toggle summary { cursor: pointer; padding: 12px 0; font-weight: 800; color: var(--blue); list-style: none; }
+.md-toggle summary::-webkit-details-marker { display: none; }
+.md-toggle summary::before { content: "▸ "; }
+.md-toggle[open] summary::before { content: "▾ "; }
+.md-toggle[open] { padding-bottom: 4px; }
 .th-nav { display: flex; justify-content: space-between; gap: 12px; }
 .th-nav .ic { width: 20px; height: 20px; }
 .profile-btn { display: grid; place-items: center; width: 48px; height: 48px; flex: none; order: 3; }

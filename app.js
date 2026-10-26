@@ -105,7 +105,7 @@ async function loadLang(lang) {
     DB[lang].phrases = ph.items.map(([id, p, t, note, cat, lvl]) => ({ id, w: p, t, note, cat, lvl, src: `audio/${lang}/phrases/${id}.mp3`, audio: true, phrase: true }));
     DB[lang].phById = new Map(DB[lang].phrases.map((x) => [x.id, x]));
   } catch {}
-  try { DB[lang].theory = await (await fetch(`data/theory-${lang}.json?v=1`)).json(); } catch { DB[lang].theory = []; }
+  try { DB[lang].theory = await (await fetch(`data/theory-${lang}.json?v=2`)).json(); } catch { DB[lang].theory = []; }
   await applyBundledImport(lang);
   return DB[lang];
 }
@@ -835,6 +835,14 @@ function mdToHtml(md) {
     const ln = lines[i];
     if (!ln.trim()) { i++; continue; }
     let m;
+    if (/^\+\+\+\s/.test(ln)) { // раскрывающийся блок: +++ Заголовок … +++
+      const inner = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== '+++') inner.push(lines[i++]);
+      i++;
+      out.push(`<details class="md-toggle"><summary>${inlineMd(ln.replace(/^\+\+\+\s*/, ''))}</summary>${mdToHtml(inner.join('\n'))}</details>`);
+      continue;
+    }
     if ((m = ln.match(/^(#{1,3})\s+(.*)/))) { const lv = Math.min(4, m[1].length + 1); out.push(`<h${lv}>${inlineMd(m[2])}</h${lv}>`); i++; continue; }
     if (/^\s*\|/.test(ln)) {
       const rows = [];
@@ -864,7 +872,7 @@ function mdToHtml(md) {
       continue;
     }
     const para = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|>|\s*\||\s*[-*•]\s|\s*\d+[.)]\s)/.test(lines[i])) { para.push(lines[i]); i++; }
+    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|>|\s*\||\s*[-*•]\s|\s*\d+[.)]\s|\+\+\+)/.test(lines[i])) { para.push(lines[i]); i++; }
     out.push(`<p>${para.map(inlineMd).join('<br>')}</p>`);
   }
   return out.join('');
@@ -888,8 +896,8 @@ function renderTheory(arg) {
   }
   const readN = list.filter((x) => theoryRead()[x.id]).length;
   return `<header class="page-head"><h1>Теория</h1>${list.length ? `<span class="th-count">${readN} / ${list.length}</span>` : ''}</header>
-    ${list.length ? `<p class="lead">${S.lang === 'ru' ? 'Откуда берутся старинные слова и как их разгадывать.' : 'Грамматика и правила — коротко, с примерами.'}</p>
-    <div class="th-list">${list.map((x, i) => `<a class="th-item ${theoryRead()[x.id] ? 'read' : ''}" href="#/theory/${x.id}">
+    ${list.length ? `<p class="lead">${S.lang === 'ru' ? 'Откуда берутся старинные слова и как их разгадывать.' : S.lang === 'en' ? 'Твоя теория из Notion: грамматика, времена, конструкции.' : 'Грамматика и правила — коротко, с примерами.'}</p>
+    <div class="th-list">${list.map((x, i) => `${x.group && x.group !== list[i - 1]?.group ? `<h2 class="th-group">${esc(x.group)}</h2>` : ''}<a class="th-item ${theoryRead()[x.id] ? 'read' : ''}" href="#/theory/${x.id}">
       <span class="th-num">${theoryRead()[x.id] ? IC.check : i + 1}</span>
       <span class="th-txt"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span>${IC.chevron}</a>`).join('')}</div>`
     : `<div class="empty">${cat('think', 100)}<p>${S.lang === 'en' ? 'Сюда переедет твоя теория из Notion — как только откроешь доступ к странице.' : 'Теория скоро появится.'}</p></div>`}`;

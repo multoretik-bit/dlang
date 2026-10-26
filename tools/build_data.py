@@ -162,10 +162,14 @@ def build_theory(lang):
         lines = f.read_text(encoding="utf-8").strip().splitlines()
         title = lines[0].lstrip("# ").strip() if lines and lines[0].startswith("#") else f.stem
         rest = lines[1:] if lines and lines[0].startswith("#") else lines
-        sub = ""
-        if rest and rest[0].startswith(">"):
+        sub, group = "", ""
+        if rest and rest[0].startswith("@group "):  # раздел (из Notion — заголовок 2-го уровня)
+            group, rest = rest[0][7:].strip(), rest[1:]
+        while rest and not rest[0].strip():
+            rest = rest[1:]
+        if rest and rest[0].startswith(">") and not rest[0].startswith("> 💡"):
             sub, rest = rest[0].lstrip("> ").strip(), rest[1:]
-        topics.append({"id": f.stem, "title": title, "sub": sub, "md": "\n".join(rest).strip()})
+        topics.append({"id": f.stem, "title": title, "sub": sub, "group": group, "md": "\n".join(rest).strip()})
     out = ROOT / "data" / f"theory-{lang}.json"
     if topics:
         out.write_text(json.dumps(topics, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

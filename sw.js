@@ -1,6 +1,6 @@
 // Офлайн: оболочка и словари — сначала сеть, потом кэш; озвучка — сначала кэш.
-const VERSION = 'dlang-v11';
-const SHELL = ['./', 'index.html', 'app.css?v=10', 'app.js?v=11', 'manifest.webmanifest', 'icons/icon.svg'];
+const VERSION = 'dlang-v12';
+const SHELL = ['./', 'index.html', 'app.css?v=11', 'app.js?v=12', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
