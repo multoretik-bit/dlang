@@ -36,6 +36,15 @@ CATS = [
     ("society", "Общество и закон", "⚖️"),
     ("tech", "Технологии и медиа", "💻"),
 ]
+# Русский: редкие слова из книг — один файл data/src/ru/words.json с полем cat
+CATS_BY_LANG = {
+    "ru": [
+        ("clothes", "Одежда, ткани, причёски", ""), ("home", "Быт и вещи", ""), ("sea", "Море и корабли", ""),
+        ("history", "История, чины, общество", ""), ("church", "Церковь и религия", ""), ("character", "Характер и поведение", ""),
+        ("people", "Люди и занятия", ""), ("speech", "Книжные слова и термины", ""), ("nature", "Природа и местность", ""),
+        ("road", "Лошади, повозки, дорога", ""), ("old", "Устаревшие и просторечные", ""),
+    ],
+}
 POS = {"n", "v", "adj", "adv", "prep", "pron", "conj", "det", "num", "int", "phr"}
 LEVELS = {"A1", "A2", "B1", "B2"}
 
@@ -52,15 +61,19 @@ def build(lang):
     for f in sorted(src.glob("import_*.json")):
         for e in json.loads(f.read_text(encoding="utf-8")):
             extra.setdefault(e.get("cat"), []).append(e)
-    unknown = set(extra) - {c[0] for c in CATS}
+    unknown = set(extra) - {c[0] for c in CATS_BY_LANG.get(lang, CATS)}
     if unknown:
         problems.append(f"import: неизвестные темы {unknown}")
-    for cat, name, emoji in CATS:
+    single = src / "words.json"
+    if single.exists():
+        for e in json.loads(single.read_text(encoding="utf-8")):
+            extra.setdefault(e.get("cat"), []).append(e)
+    for cat, name, emoji in CATS_BY_LANG.get(lang, CATS):
         f = src / f"{cat}.json"
-        if not f.exists():
+        if not f.exists() and not single.exists():
             problems.append(f"нет файла {f.name}")
             continue
-        items = json.loads(f.read_text(encoding="utf-8")) + extra.get(cat, [])
+        items = (json.loads(f.read_text(encoding="utf-8")) if f.exists() else []) + extra.get(cat, [])
         kept = 0
         for e in items:
             w = str(e.get("w", "")).strip()
@@ -141,8 +154,28 @@ def build_phrases(lang):
     print(f"{lang}: {len(items)} фраз в {len(cats)} темах")
 
 
+def build_theory(lang):
+    """data/theory/<lang>/NN-slug.md → data/theory-<lang>.json: [{id, title, sub, md}]"""
+    src = ROOT / "data" / "theory" / lang
+    topics = []
+    for f in sorted(src.glob("*.md")) if src.exists() else []:
+        lines = f.read_text(encoding="utf-8").strip().splitlines()
+        title = lines[0].lstrip("# ").strip() if lines and lines[0].startswith("#") else f.stem
+        rest = lines[1:] if lines and lines[0].startswith("#") else lines
+        sub = ""
+        if rest and rest[0].startswith(">"):
+            sub, rest = rest[0].lstrip("> ").strip(), rest[1:]
+        topics.append({"id": f.stem, "title": title, "sub": sub, "md": "\n".join(rest).strip()})
+    out = ROOT / "data" / f"theory-{lang}.json"
+    if topics:
+        out.write_text(json.dumps(topics, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print(f"{lang}: теория — {len(topics)} тем")
+
+
 if __name__ == "__main__":
-    for lang in sys.argv[1:] or ["en", "es"]:
-        build(lang)
-        build_verbs(lang)
-        build_phrases(lang)
+    for lang in sys.argv[1:] or ["en", "es", "ru"]:
+        if (ROOT / "data" / "src" / lang).exists():
+            build(lang)
+            build_verbs(lang)
+            build_phrases(lang)
+        build_theory(lang)

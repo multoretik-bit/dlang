@@ -4,9 +4,17 @@
 
 const FLAG_EN = '<svg class="flag" viewBox="0 0 60 42"><clipPath id="fuk"><rect width="60" height="42" rx="8"/></clipPath><g clip-path="url(#fuk)"><rect width="60" height="42" fill="#012169"/><path d="M0 0l60 42M60 0 0 42" stroke="#fff" stroke-width="9"/><path d="M0 0l60 42M60 0 0 42" stroke="#C8102E" stroke-width="3"/><path d="M30 0v42M0 21h60" stroke="#fff" stroke-width="13"/><path d="M30 0v42M0 21h60" stroke="#C8102E" stroke-width="7"/></g></svg>';
 const FLAG_ES = '<svg class="flag" viewBox="0 0 60 42"><clipPath id="fes"><rect width="60" height="42" rx="8"/></clipPath><g clip-path="url(#fes)"><rect width="60" height="42" fill="#AA151B"/><rect y="10.5" width="60" height="21" fill="#F1BF00"/></g></svg>';
+const FLAG_RU = '<svg class="flag" viewBox="0 0 60 42"><clipPath id="fru"><rect width="60" height="42" rx="8"/></clipPath><g clip-path="url(#fru)"><rect width="60" height="14" fill="#fff"/><rect y="14" width="60" height="14" fill="#0039A6"/><rect y="28" width="60" height="14" fill="#D52B1E"/></g><rect width="59" height="41" x=".5" y=".5" rx="7.5" fill="none" stroke="#e5e5e5"/></svg>';
 const LANGS = {
   en: { name: 'Английский', in: 'на английском', flag: FLAG_EN, speech: 'en-US', levels: ['A1', 'A2', 'B1', 'B2'], total: '2351 слово', tip: 'decide — «дай сайд»: выбери сторону' },
   es: { name: 'Испанский', in: 'на испанском', flag: FLAG_ES, speech: 'es-ES', levels: ['A1', 'A2', 'B1'], total: '1070 слов', tip: 'la playa — «плайя»: пляж, где плавают' },
+  // русский: редкие и старинные слова из книг; «перевод» здесь — толкование
+  ru: {
+    name: 'Русский', in: 'по-русски', flag: FLAG_RU, speech: 'ru-RU', levels: ['A2', 'B1', 'B2'], total: 'редкие слова из книг', tip: 'обшлаг — «об шлаг»: обшитый край рукава',
+    levelNames: { A2: 'Знакомые', B1: 'Редкие', B2: 'Очень редкие' },
+    levelInfo: { A2: ['Знакомые', 'Встречал, но не уверен в значении'], B1: ['Редкие', 'Книжные и старинные слова'], B2: ['Очень редкие', 'Узкие термины и архаизмы'] },
+    ask: { choice: 'Что значит это слово?', reverse: 'Какое это слово?', type: 'Напиши слово' }, tLabel: 'Значение', noMatch: true,
+  },
 };
 const LEVELS = ['A1', 'A2', 'B1', 'B2'];
 const LEVEL_INFO = {
@@ -97,6 +105,7 @@ async function loadLang(lang) {
     DB[lang].phrases = ph.items.map(([id, p, t, note, cat, lvl]) => ({ id, w: p, t, note, cat, lvl, src: `audio/${lang}/phrases/${id}.mp3`, audio: true, phrase: true }));
     DB[lang].phById = new Map(DB[lang].phrases.map((x) => [x.id, x]));
   } catch {}
+  try { DB[lang].theory = await (await fetch(`data/theory-${lang}.json?v=1`)).json(); } catch { DB[lang].theory = []; }
   await applyBundledImport(lang);
   return DB[lang];
 }
@@ -131,6 +140,9 @@ function counts(list = D().words) {
 
 // ---------- уровни сложности ----------
 const LEVEL_NAME = { A1: 'Лёгкие', A2: 'Средние', B1: 'Сложные', B2: 'Очень сложные' };
+const levelName = (lv) => LANGS[S.lang].levelNames?.[lv] || LEVEL_NAME[lv];
+const levelInfo = (lv, lang = S.lang) => LANGS[lang].levelInfo?.[lv] || LEVEL_INFO[lv];
+const ask = (k) => LANGS[S.lang].ask?.[k];
 const LEVEL_COLOR = { A1: 'green', A2: 'blue', B1: 'purple', B2: 'orange' };
 const levelWords = (lv) => (lv === 'mine' ? D().words.filter((w) => w.custom && w.cat !== 'old') : D().base.filter((w) => w.lvl === lv));
 const freshOf = (list) => list.filter((w) => status(w.id) === 'new').map((w) => w.id);
@@ -321,6 +333,7 @@ const IC = {
 // цветные иконки меню и статистики
 const ICON = {
   get review() { return ICON.repeat; },
+  theory: '<svg viewBox="0 0 32 32"><path d="M16 5 3 11l13 6 13-6z" fill="#1cb0f6"/><path d="M8 14v6c0 2 3.6 4 8 4s8-2 8-4v-6l-8 3.7z" fill="#1899d6"/><path d="M27 12v8" stroke="#ffc800" stroke-width="2.4" stroke-linecap="round"/><circle cx="27" cy="21" r="2" fill="#ffc800"/></svg>',
   phrases: '<svg viewBox="0 0 32 32"><path d="M5 7a3 3 0 0 1 3-3h16a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H13l-6 5v-5H8a3 3 0 0 1-3-3z" fill="#ff86d0"/><path d="M10 10.5h12M10 15h8" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>',
   verbs: '<svg viewBox="0 0 32 32"><rect x="4" y="5" width="24" height="6" rx="3" fill="#ce82ff"/><rect x="4" y="13" width="18" height="6" rx="3" fill="#1cb0f6"/><rect x="4" y="21" width="12" height="6" rx="3" fill="#58cc02"/></svg>',
   learn: '<svg viewBox="0 0 32 32"><path d="M5 14.5 16 5l11 9.5V27a1.5 1.5 0 0 1-1.5 1.5h-19A1.5 1.5 0 0 1 5 27z" fill="#ffc800"/><path d="M3 15.5 16 4l13 11.5" fill="none" stroke="#ff4b4b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="12.5" y="18" width="7" height="10.5" rx="1.5" fill="#e5a000"/></svg>',
@@ -394,7 +407,7 @@ async function render() {
   if (page === 'cards') return cards ? renderCardSession() : go('#/review');
   if (page === 'words') return go('#/cats');
   if (page === 'verbs' && !hasVerbs()) return go('#/learn');
-  const views = { learn: renderLearn, cats: () => renderCats(arg), phrases: () => renderPhrases(arg), verbs: renderVerbs, review: renderReview, profile: renderProfile };
+  const views = { learn: renderLearn, cats: () => renderCats(arg), phrases: () => renderPhrases(arg), verbs: renderVerbs, theory: () => renderTheory(arg), review: renderReview, profile: renderProfile };
   const name = views[page] ? page : 'learn';
   app.innerHTML = `
     <div class="shell">
@@ -406,7 +419,7 @@ async function render() {
   afterRender[name]?.();
 }
 const afterRender = {};
-const NAV_ALL = [['learn', 'Учить'], ['cats', 'Категории'], ['phrases', 'Фразы'], ['verbs', 'Глаголы'], ['review', 'Повторение'], ['profile', 'Профиль']];
+const NAV_ALL = [['learn', 'Учить'], ['cats', 'Категории'], ['phrases', 'Фразы'], ['verbs', 'Глаголы'], ['theory', 'Теория'], ['review', 'Повторение'], ['profile', 'Профиль']];
 const navItems = () => NAV_ALL.filter(([id]) => (id !== 'verbs' || hasVerbs()) && (id !== 'phrases' || hasPhrases()));
 function sidebar(page) {
   return `<nav class="sidebar">
@@ -415,13 +428,15 @@ function sidebar(page) {
   </nav>`;
 }
 function tabbar(page) {
-  return `<nav class="tabbar" style="--n:${navItems().length}">${navItems().map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}</nav>`;
+  const items = navItems().filter(([id]) => id !== 'profile'); // профиль на телефоне — кнопка в шапке «Учить»
+  return `<nav class="tabbar" style="--n:${items.length}">${items.map(([id, label]) => `<a href="#/${id}" class="tab ${page === id ? 'on' : ''}">${ICON[id]}<span>${label}</span></a>`).join('')}</nav>`;
 }
 // «Выучено» — закреплённые слова, «осталось» — ещё не тронутые, «сегодня» — начатые сегодня.
 function statsBar() {
   const c = counts(), learned = c.learned, todayN = dayStat().n;
   return `<div class="statsbar">
     <button class="lang-btn" data-act="lang-sheet" aria-label="Язык">${LANGS[S.lang].flag}</button>
+    <a class="profile-btn mobile-only" href="#/profile" aria-label="Профиль">${ICON.profile}</a>
     <div class="top-nums">
       <div class="top-num"><b class="c-green">${learned}</b><small>выучено</small></div>
       <div class="top-num"><b>${c.new}</b><small>осталось</small></div>
@@ -449,7 +464,7 @@ function renderOnboarding() {
     options = LANGS[lang].levels.map((lv) => `
       <button class="pick-row ${ob.sel === lv ? 'sel' : ''}" data-act="ob-pick" data-v="${lv}">
         <span class="lvl-bars l${LEVELS.indexOf(lv) + 1}"><i></i><i></i><i></i><i></i></span>
-        <span><b>${LEVEL_INFO[lv][1]}</b><small>${lv} · ${LEVEL_INFO[lv][0]}</small></span></button>`).join('');
+        <span><b>${levelInfo(lv, lang)[1]}</b><small>${lv} · ${levelInfo(lv, lang)[0]}</small></span></button>`).join('');
   } else {
     bubble = 'Сколько новых слов в день будем учить?';
     options = GOALS.map(([n, label]) => `
@@ -483,7 +498,7 @@ function dailyCard() {
       ${lv || freshOf(levelWords('mine')).length ? `<button class="btn btn-green btn-wide" data-act="learn-main">${done ? 'Ещё новые слова' : 'Учить новые слова'}</button>` : ''}
       ${due ? `<button class="btn btn-blue-ghost btn-wide" data-act="deck-quiz" data-deck="due">Повторить · ${due}</button>` : ''}
     </div>
-    ${lv ? `<p class="daily-note">Случайные слова: ${LEVEL_NAME[lv].toLowerCase()} · ${lv}</p>` : ''}
+    ${lv ? `<p class="daily-note">Случайные слова: ${levelName(lv).toLowerCase()} · ${lv}</p>` : ''}
   </section>`;
 }
 function questsCard() {
@@ -546,7 +561,7 @@ function renderLearn() {
     <h2 class="h2 first">Сложность</h2>
     <p class="lead">Выбери уровень — я наберу случайные новые слова.</p>
     <div class="level-grid">
-      ${LANGS[S.lang].levels.map((lv) => levelCard(lv, LEVEL_NAME[lv], lv, levelWords(lv), LEVEL_COLOR[lv])).join('')}
+      ${LANGS[S.lang].levels.map((lv) => levelCard(lv, levelName(lv), lv, levelWords(lv), LEVEL_COLOR[lv])).join('')}
       ${custom.length ? levelCard('mine', 'Мои слова', 'свои', custom, 'pink') : ''}
     </div>
     <div class="quick-row">
@@ -610,7 +625,7 @@ function startLesson({ newIds = [], reviewIds = [], practice = false } = {}) {
   for (const id of reviewIds) later.push({ t: reviewType(id), id });
   steps.push(...shuffle(later));
   const matchIds = newIds.length >= 3 ? newIds : practice && reviewIds.length >= 3 ? shuffle(reviewIds.slice()).slice(0, 5) : [];
-  if (new Set(matchIds.map((id) => norm(W(id).t))).size >= 3) steps.push({ t: 'match', ids: matchIds.slice(0, 6) });
+  if (!LANGS[S.lang].noMatch && new Set(matchIds.map((id) => norm(W(id).t))).size >= 3) steps.push({ t: 'match', ids: matchIds.slice(0, 6) });
   lesson = { back: location.hash && location.hash !== '#/lesson' ? location.hash : '#/learn', steps, i: 0, newIds: newIds.slice(), graded: new Set(), retries: {}, correct: 0, total: 0, xp: 0, combo: 0, best: 0, answered: null, sel: null, start: Date.now() };
   go('#/lesson');
 }
@@ -624,6 +639,7 @@ function renderLesson() {
   clearTimeout(lesson.timer);
   if (lesson.i >= lesson.steps.length) return renderLessonEnd();
   const st = step(), w = st.id && (st.verb ? VB(st.id) : st.phrase ? PH(st.id) : W(st.id));
+  if (S.lang === 'ru' && st.t === 'listen') st.t = 'reverse';
   if (st.id && !w) { lesson.i++; return renderLesson(); }
   let body = '';
   if (st.t === 'pintro') body = phraseIntroView(w);
@@ -676,15 +692,15 @@ function choiceView(st, w) {
   const reverse = st.t !== 'choice';
   if (!st.opts) st.opts = shuffle([w, ...distractors(w, reverse ? 'w' : 't')]).map((x) => x.id);
   let prompt;
-  if (st.t === 'choice') prompt = `<h1 class="ex-title">Выбери перевод</h1>
+  if (st.t === 'choice') prompt = `<h1 class="ex-title">${ask('choice') || 'Выбери перевод'}</h1>
     <div class="speaker-row">${cat('idle', 96)}<div class="bubble bubble-word"><div class="bw-line">${say(w.id, 'say-lg')}<span class="bw-word">${esc(w.w)}</span></div></div></div>`;
-  else if (st.t === 'reverse') prompt = `<h1 class="ex-title">Как сказать ${LANGS[S.lang].in}?</h1>
+  else if (st.t === 'reverse') prompt = `<h1 class="ex-title">${ask('reverse') || `Как сказать ${LANGS[S.lang].in}?`}</h1>
     <div class="speaker-row">${cat('think', 96)}<div class="bubble bubble-word"><span class="bw-word ru">${esc(w.t)}</span></div></div>`;
   else prompt = `<h1 class="ex-title">Что ты слышишь?</h1>
     <div class="listen-row"><button class="listen-btn" data-act="say" data-id="${esc(w.id)}">${IC.speaker}</button><button class="listen-btn slow" data-act="say-slow" data-id="${esc(w.id)}" aria-label="Медленно"><small>0.8×</small></button></div>`;
   const a = lesson.answered;
   return `${prompt}
-    <div class="choices">${st.opts.map((id, i) => {
+    <div class="choices ${S.lang === 'ru' && !reverse ? 'one' : ''}">${st.opts.map((id, i) => {
       const x = W(id);
       let cls = lesson.sel === id ? 'sel' : '';
       if (a) cls = id === w.id ? 'right' : id === lesson.sel ? 'wrong' : '';
@@ -694,7 +710,7 @@ function choiceView(st, w) {
 function typeView(w) {
   const a = lesson.answered;
   return `
-    <h1 class="ex-title">Напиши ${LANGS[S.lang].in}</h1>
+    <h1 class="ex-title">${ask('type') || `Напиши ${LANGS[S.lang].in}`}</h1>
     <div class="speaker-row">${cat('think', 96)}<div class="bubble bubble-word"><span class="bw-word ru">${esc(w.t)}</span>${w.exr ? `<small class="bw-hint">${esc(w.exr)}</small>` : ''}</div></div>
     <form class="type-form" data-form="type">
       <textarea id="typed" class="type-input" rows="2" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
@@ -807,6 +823,78 @@ function dropFromLesson(id) {
   save();
   nextStep();
 }
+// ---------- теория ----------
+// мини-Markdown: # ## ###, абзацы, списки - и 1., таблицы |, цитаты >, **жирный**, *курсив*, `код`
+function inlineMd(t) {
+  return esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*(?!\s)(.+?)\*/g, '$1<i>$2</i>').replace(/`(.+?)`/g, '<code>$1</code>');
+}
+function mdToHtml(md) {
+  const lines = md.replace(/\r/g, '').split('\n'), out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const ln = lines[i];
+    if (!ln.trim()) { i++; continue; }
+    let m;
+    if ((m = ln.match(/^(#{1,3})\s+(.*)/))) { const lv = Math.min(4, m[1].length + 1); out.push(`<h${lv}>${inlineMd(m[2])}</h${lv}>`); i++; continue; }
+    if (/^\s*\|/.test(ln)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(lines[i]); i++; }
+      const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      const body = rows.filter((r) => !/^[\s|:-]+$/.test(r)); // без строки-разделителя | --- |
+      const [head, ...rest] = body;
+      out.push(`<div class="md-table"><table><thead><tr>${cells(head).map((c) => `<th>${inlineMd(c)}</th>`).join('')}</tr></thead><tbody>${rest.map((r) => `<tr>${cells(r).map((c) => `<td>${inlineMd(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
+      continue;
+    }
+    if (/^>\s?/.test(ln)) {
+      const q = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) { q.push(lines[i].replace(/^>\s?/, '')); i++; }
+      out.push(`<blockquote>${q.map(inlineMd).join('<br>')}</blockquote>`);
+      continue;
+    }
+    if (/^\s*[-*•]\s+/.test(ln)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*[-*•]\s+(\[[ x]\]\s*)?/, '')); i++; }
+      out.push(`<ul>${items.map((x) => `<li>${inlineMd(x)}</li>`).join('')}</ul>`);
+      continue;
+    }
+    if (/^\s*\d+[.)]\s+/.test(ln)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*\d+[.)]\s+/, '')); i++; }
+      out.push(`<ol>${items.map((x) => `<li>${inlineMd(x)}</li>`).join('')}</ol>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|>|\s*\||\s*[-*•]\s|\s*\d+[.)]\s)/.test(lines[i])) { para.push(lines[i]); i++; }
+    out.push(`<p>${para.map(inlineMd).join('<br>')}</p>`);
+  }
+  return out.join('');
+}
+const theoryRead = () => (LP().theoryRead ||= {});
+function renderTheory(arg) {
+  const list = D().theory || [];
+  const topic = arg && list.find((x) => x.id === arg);
+  if (topic) {
+    const i = list.indexOf(topic), prev = list[i - 1], next = list[i + 1], read = theoryRead()[topic.id];
+    return `<header class="page-head"><a class="icon-btn" href="#/theory" aria-label="Назад">${IC.back}</a><h1 class="grow">${esc(topic.title)}</h1></header>
+      ${topic.sub ? `<p class="lead">${esc(topic.sub)}</p>` : ''}
+      <article class="md">${mdToHtml(topic.md)}</article>
+      <div class="th-foot">
+        <button class="btn ${read ? 'btn-ghost' : 'btn-green'} btn-wide" data-act="th-read" data-id="${esc(topic.id)}">${read ? '✓ Прочитано' : 'Отметить прочитанным'}</button>
+        <div class="th-nav">
+          ${prev ? `<a class="btn btn-ghost" href="#/theory/${prev.id}">${IC.back}<span>Назад</span></a>` : '<span></span>'}
+          ${next ? `<a class="btn btn-blue" href="#/theory/${next.id}"><span>Дальше</span>${IC.chevron}</a>` : ''}
+        </div>
+      </div>`;
+  }
+  const readN = list.filter((x) => theoryRead()[x.id]).length;
+  return `<header class="page-head"><h1>Теория</h1>${list.length ? `<span class="th-count">${readN} / ${list.length}</span>` : ''}</header>
+    ${list.length ? `<p class="lead">${S.lang === 'ru' ? 'Откуда берутся старинные слова и как их разгадывать.' : 'Грамматика и правила — коротко, с примерами.'}</p>
+    <div class="th-list">${list.map((x, i) => `<a class="th-item ${theoryRead()[x.id] ? 'read' : ''}" href="#/theory/${x.id}">
+      <span class="th-num">${theoryRead()[x.id] ? IC.check : i + 1}</span>
+      <span class="th-txt"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span>${IC.chevron}</a>`).join('')}</div>`
+    : `<div class="empty">${cat('think', 100)}<p>${S.lang === 'en' ? 'Сюда переедет твоя теория из Notion — как только откроешь доступ к странице.' : 'Теория скоро появится.'}</p></div>`}`;
+}
+
 // ---------- фразы ----------
 const phraseCounts = (list) => { const c = { new: 0, learning: 0, learned: 0, total: list.length }; for (const x of list) c[status(x.id)]++; return c; };
 const phraseDue = () => { const t = today(); return D().phrases.filter((x) => { const r = LP().words[x.id]; return r && r.s >= 1 && r.due <= t; }).map((x) => x.id); };
@@ -1339,8 +1427,8 @@ function wordForm(id) {
   openSheet(`
     <form class="form" data-form="word" data-id="${esc(id || '')}">
       <h2>${w ? 'Изменить слово' : 'Своё слово'}</h2>
-      <label><span>Слово ${LANGS[S.lang].in}</span><input name="w" required value="${esc(w?.w || '')}" autocomplete="off" lang="${S.lang}" placeholder="${S.lang === 'en' ? 'serendipity' : 'la sobremesa'}"></label>
-      <label><span>Перевод</span><input name="t" required value="${esc(w?.t || '')}" autocomplete="off" placeholder="${S.lang === 'en' ? 'счастливая случайность' : 'беседа за столом после еды'}"></label>
+      <label><span>Слово ${LANGS[S.lang].in}</span><input name="w" required value="${esc(w?.w || '')}" autocomplete="off" lang="${S.lang}" placeholder="${{ en: 'serendipity', es: 'la sobremesa', ru: 'обшлаг' }[S.lang]}"></label>
+      <label><span>${LANGS[S.lang].tLabel || 'Перевод'}</span><input name="t" required value="${esc(w?.t || '')}" autocomplete="off" placeholder="${{ en: 'счастливая случайность', es: 'беседа за столом после еды', ru: 'отворот на конце рукава' }[S.lang]}"></label>
       <label><span>Пример <small>— необязательно</small></span><input name="ex" value="${esc(w?.ex || '')}" autocomplete="off" lang="${S.lang}"></label>
       <label><span>Перевод примера <small>— необязательно</small></span><input name="exr" value="${esc(w?.exr || '')}" autocomplete="off"></label>
       <label><span>Ассоциация <small>— необязательно</small></span><textarea name="as" rows="2">${esc(r?.as || '')}</textarea></label>
@@ -1534,6 +1622,7 @@ const actions = {
   know: (el) => { markKnown(el.dataset.id); save(); closeSheet(); toast('Отмечено как изученное'); render(); },
   'reset-word': (el) => { resetWord(el.dataset.id); save(); closeSheet(); toast('Слово вернётся в уроки'); render(); },
   'verbs-tab': (el) => { vv.tab = el.dataset.tab; render(); },
+  'th-read': (el) => { const r = theoryRead(); r[el.dataset.id] = !r[el.dataset.id]; save(); render(); },
   'ph-learn': (el) => { const cat = el.dataset.cat; learnPhrases(D().phrases.filter((x) => !cat || x.cat === cat), cat ? `#/phrases/${cat}` : '#/phrases'); },
   'ph-review': (el) => { const cat = el.dataset.cat; reviewPhrases(D().phrases.filter((x) => !cat || x.cat === cat), cat ? `#/phrases/${cat}` : '#/phrases'); },
   tile: (el) => { const st = step(); if (lesson.answered || st.picked.includes(+el.dataset.i)) return; st.picked.push(+el.dataset.i); renderLesson(); },

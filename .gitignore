@@ -1,3 +1,4 @@
 __pycache__/
 *.part
 data/src/*/_todo_*.json
+data/src/*/_todo_*

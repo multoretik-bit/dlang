@@ -17,7 +17,7 @@ from pathlib import Path
 import edge_tts
 
 ROOT = Path(__file__).resolve().parent.parent
-VOICES = {"en": "en-US-AvaNeural", "es": "es-ES-ElviraNeural"}
+VOICES = {"en": "en-US-AvaNeural", "es": "es-ES-ElviraNeural", "ru": "ru-RU-SvetlanaNeural"}
 PARALLEL = 8
 
 
